@@ -33,19 +33,14 @@ rules:
     resources:
       - nodes
     verbs:
-      - create
-      - delete
       - get
       - list
-      - patch
-      - update
       - watch
   - apiGroups:
       - ""
     resources:
       - nodes/status
     verbs:
-      - patch
       - update
   - apiGroups:
       - ""
@@ -78,6 +73,25 @@ subjects:
     namespace: kube-system
 ---
 apiVersion: v1
+kind: Node
+metadata:
+  annotations:
+    node.alpha.kubernetes.io/ttl: "0"
+  labels:
+    alpha.service-controller.kubernetes.io/exclude-balancer: "true"
+    beta.kubernetes.io/os: linux
+    kubernetes.io/hostname: fake
+    kubernetes.io/os: linux
+    kubernetes.io/role: agent
+    type: virtual-kubelet
+  name: fake
+spec:
+  taints:
+    - effect: NoSchedule
+      key: virtual-kubelet.io/provider
+      value: fake
+---
+apiVersion: v1
 kind: Pod
 metadata:
   name: fake-kubelet
@@ -89,10 +103,18 @@ spec:
     - name: fake-kubelet
       image: wzshiming/fake-kubelet
       imagePullPolicy: IfNotPresent
+      env:
+        - name: NODE_NAME
+          value: fake
+        - name: HOST_IP
+          value: 10.0.0.1
+        - name: NODE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
   serviceAccount: fake-kubelet
   serviceAccountName: fake-kubelet
   restartPolicy: Always
-  terminationGracePeriodSeconds: 0
 ---
 ```
 

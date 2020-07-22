@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/pflag"
 	fake_kubelet "github.com/wzshiming/fake-kubelet"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/deprecated/scheme"
 	"k8s.io/client-go/kubernetes"
@@ -18,17 +17,17 @@ import (
 )
 
 var (
-	hostIP     = net.ParseIP(getEnv("HOST_IP", "10.0.0.1"))
+	hostIP     = net.ParseIP(getEnv("HOST_IP", "10.0.0.2"))
+	nodeIP     = net.ParseIP(getEnv("NODE_IP", "10.0.0.1"))
 	nodeName   = getEnv("NODE_NAME", "fake")
-	provider   = getEnv("PROVIDER", "fake")
 	kubeconfig = ""
 	master     = ""
 )
 
 func init() {
-	pflag.IPVarP(&hostIP, "host_ip", "h", hostIP, "host ip")
+	pflag.IPVar(&hostIP, "host_ip", hostIP, "host ip")
+	pflag.IPVar(&nodeIP, "node_ip", nodeIP, "node ip")
 	pflag.StringVarP(&nodeName, "node_name", "n", nodeName, "node name")
-	pflag.StringVarP(&provider, "provider", "p", provider, "provider name")
 	pflag.StringVar(&kubeconfig, "kubeconfig", kubeconfig, "kubeconfig")
 	pflag.StringVar(&master, "master", master, "master")
 }
@@ -46,12 +45,9 @@ func main() {
 		log.Println(err)
 		return
 	}
-	n := fake_kubelet.NewNode(cliset, nodeName, provider, hostIP)
-	err = n.Create(ctx, &v1.Node{})
-	if err != nil {
-		log.Println(err)
-	}
-	err = n.LockReadyStatus(context.Background())
+	n := fake_kubelet.NewController(cliset, nodeName, hostIP, nodeIP)
+
+	err = n.LockNodeReadyStatus(context.Background())
 	if err != nil {
 		log.Println(err)
 		return

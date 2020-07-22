@@ -3,11 +3,9 @@ package fake_kubelet
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"log"
 	"net"
 	"reflect"
-	"sync/atomic"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -18,94 +16,44 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-type Node struct {
-	Index     uint64
+type Controller struct {
 	HostIP    net.IP
+	NodeIP    net.IP
 	Name      string
-	Provider  string
 	ClientSet *kubernetes.Clientset
+	ipPool    *ipPool
 }
 
-func NewNode(clientSet *kubernetes.Clientset, name string, provider string, hostIP net.IP) *Node {
-	return &Node{
+func NewController(clientSet *kubernetes.Clientset, name string, hostIP, nodeIP net.IP) *Controller {
+	var index uint64
+	n := &Controller{
 		ClientSet: clientSet,
 		Name:      name,
-		Provider:  provider,
 		HostIP:    hostIP,
-	}
-}
-
-func (c *Node) String() string {
-	return fmt.Sprintf("<Node %s>", c.Name)
-}
-
-func (c *Node) DeletePodInNode(ctx context.Context) error {
-	opt := metav1.ListOptions{
-		FieldSelector: c.selector().String(),
-	}
-	err := c.ClientSet.CoreV1().Pods(corev1.NamespaceAll).DeleteCollection(ctx, *metav1.NewDeleteOptions(0), opt)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (c *Node) Delete(ctx context.Context) error {
-	err := c.ClientSet.CoreV1().Nodes().Delete(ctx, c.Name, *metav1.NewDeleteOptions(0))
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (c *Node) Create(ctx context.Context, node *corev1.Node) error {
-	node.Name = c.Name
-
-	node.Annotations = map[string]string{
-		"node.alpha.kubernetes.io/ttl": "0",
-	}
-	node.Labels = map[string]string{
-		"beta.kubernetes.io/os":   "linux",
-		"kubernetes.io/os":        "linux",
-		"kubernetes.io/hostname":  c.Name,
-		"kubernetes.io/role":      "agent",
-		"type":                    "virtual-kubelet",
-		"minikube.k8s.io/version": "none",
-	}
-	node.Spec.Taints = []corev1.Taint{
-		{
-			Effect: corev1.TaintEffectNoSchedule,
-			Key:    "virtual-kubelet.io/provider",
-			Value:  c.Provider,
+		NodeIP:    nodeIP,
+		ipPool: &ipPool{
+			New: func() string {
+				index++
+				return addIp(hostIP, index).String()
+			},
+			used:   map[string]struct{}{},
+			usable: map[string]struct{}{},
 		},
 	}
-
-	c.configureNode(node)
-	_, err := c.ClientSet.CoreV1().Nodes().Create(ctx, node, metav1.CreateOptions{})
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return n
 }
 
-func (c *Node) selector() fields.Selector {
-	return fields.OneTermEqualSelector("spec.nodeName", c.Name)
-}
-
-func (c *Node) deletePod(ctx context.Context, pod *corev1.Pod) error {
+func (c *Controller) deletePod(ctx context.Context, pod *corev1.Pod) error {
 	return c.ClientSet.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, *metav1.NewDeleteOptions(0))
 }
 
-func (c *Node) lockPod(ctx context.Context, pod *corev1.Pod) error {
+func (c *Controller) lockPod(ctx context.Context, pod *corev1.Pod) error {
 	if pod.DeletionTimestamp != nil {
+		c.ipPool.Put(pod.Status.PodIP)
 		err := c.deletePod(ctx, pod)
 		if err != nil {
 			return err
 		}
-		log.Printf("ready %s.%s", pod.Name, pod.Namespace)
 		return nil
 	}
 
@@ -130,10 +78,21 @@ func (c *Node) lockPod(ctx context.Context, pod *corev1.Pod) error {
 	return nil
 }
 
-func (c *Node) LockPodReadyStatus(ctx context.Context) error {
+func (c *Controller) LockPodReadyStatus(ctx context.Context) error {
 	opt := metav1.ListOptions{
-		FieldSelector: c.selector().String(),
+		FieldSelector: fields.OneTermEqualSelector("spec.nodeName", c.Name).String(),
 	}
+
+	lockCh := make(chan *corev1.Pod, 10)
+	go func() {
+		for pod := range lockCh {
+			err := c.lockPod(ctx, pod)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+		}
+	}()
 
 	watcher, err := c.ClientSet.CoreV1().Pods(corev1.NamespaceAll).Watch(ctx, opt)
 	if err != nil {
@@ -157,18 +116,18 @@ func (c *Node) LockPodReadyStatus(ctx context.Context) error {
 				switch event.Type {
 				case watch.Added, watch.Modified:
 					pod := event.Object.(*corev1.Pod)
-					err := c.lockPod(ctx, pod)
-					if err != nil {
-						log.Println(err)
-						continue
-					}
+					lockCh <- pod
+					log.Printf("%s %s.%s", event.Type, pod.Name, pod.Namespace)
 				case watch.Deleted:
-				case watch.Error:
+					pod := event.Object.(*corev1.Pod)
+					log.Printf("%s %s.%s", event.Type, pod.Name, pod.Namespace)
+				default:
 					log.Printf("not handle %s", event.Type)
 				}
 			case <-ctx.Done():
+				close(lockCh)
 				watcher.Stop()
-				log.Printf("stop locking pod ready status in %s", c.String())
+				log.Printf("stop locking pod ready status in nodes %s", c.Name)
 				return
 			}
 
@@ -180,15 +139,12 @@ func (c *Node) LockPodReadyStatus(ctx context.Context) error {
 		return err
 	}
 	for _, item := range list.Items {
-		err = c.lockPod(ctx, &item)
-		if err != nil {
-			log.Println(err)
-		}
+		lockCh <- &item
 	}
 	return nil
 }
 
-func (c *Node) lockNode(ctx context.Context, node *corev1.Node) error {
+func (c *Controller) lockNode(ctx context.Context, node *corev1.Node) error {
 	if node.Name != c.Name {
 		return nil
 	}
@@ -201,8 +157,22 @@ func (c *Node) lockNode(ctx context.Context, node *corev1.Node) error {
 	return err
 }
 
-func (c *Node) LockReadyStatus(ctx context.Context) error {
-	watcher, err := c.ClientSet.CoreV1().Nodes().Watch(ctx, metav1.ListOptions{})
+func (c *Controller) LockNodeReadyStatus(ctx context.Context) error {
+	node, err := c.ClientSet.CoreV1().Nodes().Get(ctx, c.Name, metav1.GetOptions{})
+	if err == nil {
+		node.ResourceVersion = "0"
+		c.lockNode(ctx, node)
+		if err != nil {
+			log.Println(err)
+		}
+	} else {
+		log.Println(err)
+	}
+
+	selector := metav1.ListOptions{
+		FieldSelector: fields.OneTermEqualSelector("metadata.name", c.Name).String(),
+	}
+	watcher, err := c.ClientSet.CoreV1().Nodes().Watch(ctx, selector)
 	if err != nil {
 		return err
 	}
@@ -215,7 +185,7 @@ func (c *Node) LockReadyStatus(ctx context.Context) error {
 			select {
 			case event, ok := <-rc:
 				if !ok {
-					watcher, err := c.ClientSet.CoreV1().Nodes().Watch(ctx, metav1.ListOptions{})
+					watcher, err := c.ClientSet.CoreV1().Nodes().Watch(ctx, selector)
 					if err != nil {
 						log.Println(err)
 						return
@@ -247,29 +217,30 @@ func (c *Node) LockReadyStatus(ctx context.Context) error {
 				th.Reset(heartbeatInterval)
 			case <-ctx.Done():
 				watcher.Stop()
-				log.Printf("stop locking %s ready status", c.String())
+				log.Printf("stop locking nodes %s ready status", c.Name)
 				return
 			}
-
 		}
 	}()
 
 	return nil
 }
 
-func (c *Node) configurePod(pod *corev1.Pod) (update bool) {
+func (c *Controller) configurePod(pod *corev1.Pod) (update bool) {
 	now := metav1.Now()
 	if pod.Status.Phase != corev1.PodRunning {
 		pod.Status.Phase = corev1.PodRunning
 		update = true
 	}
 	if pod.Status.HostIP == "" {
-		pod.Status.HostIP = c.HostIP.String()
+		pod.Status.HostIP = c.NodeIP.String()
 		update = true
 	}
 	if pod.Status.PodIP == "" {
-		pod.Status.PodIP = addIp(c.HostIP, atomic.AddUint64(&c.Index, 1)).String()
+		pod.Status.PodIP = c.ipPool.Get()
 		update = true
+	} else {
+		c.ipPool.Use(pod.Status.PodIP)
 	}
 	if pod.Status.StartTime.IsZero() {
 		pod.Status.StartTime = &now
@@ -305,47 +276,48 @@ func (c *Node) configurePod(pod *corev1.Pod) (update bool) {
 	return update
 }
 
-func (c *Node) configureNode(n *corev1.Node) (update bool) {
+func (c *Controller) configureNode(n *corev1.Node) (update bool) {
 	if n.Status.Phase != corev1.NodeRunning {
 		n.Status.Phase = corev1.NodeRunning
 		update = true
 	}
 
 	capacity := nodeCapacity()
-	if reflect.DeepEqual(n.Status.Capacity, capacity) {
+	if !reflect.DeepEqual(n.Status.Capacity, capacity) {
 		n.Status.Capacity = capacity
 		update = true
 	}
 
-	if reflect.DeepEqual(n.Status.Allocatable, capacity) {
+	if !reflect.DeepEqual(n.Status.Allocatable, capacity) {
 		n.Status.Allocatable = capacity
 		update = true
 	}
 
-	addresses := nodeAddresses()
-	if reflect.DeepEqual(n.Status.Addresses, capacity) {
+	addresses := c.nodeAddresses()
+	if !reflect.DeepEqual(n.Status.Addresses, capacity) {
 		n.Status.Addresses = addresses
 		update = true
 	}
 
-	if len(n.Status.Conditions) == 0 {
-		n.Status.Conditions = nodeConditions()
-		update = true
-	}
-
 	daemonEndpoints := nodeDaemonEndpoints()
-	if reflect.DeepEqual(n.Status.DaemonEndpoints, daemonEndpoints) {
+	if !reflect.DeepEqual(n.Status.DaemonEndpoints, daemonEndpoints) {
 		n.Status.DaemonEndpoints = daemonEndpoints
 		update = true
 	}
 
 	info := nodeInfo()
-	if reflect.DeepEqual(n.Status.NodeInfo, info) {
+	if !reflect.DeepEqual(n.Status.NodeInfo, info) {
 		n.Status.NodeInfo = info
 		update = true
 	}
 
-	n.ObjectMeta.Labels["alpha.service-controller.kubernetes.io/exclude-balancer"] = "true"
+	cond := nodeConditions()
+	if len(n.Status.Conditions) != len(cond) {
+		n.Status.Conditions = cond
+		updateNodeStatusHeartbeat(n)
+		updateNodeStatusTransition(n)
+	}
+
 	return update
 }
 
@@ -387,56 +359,45 @@ func podConditions() []corev1.PodCondition {
 }
 
 func nodeConditions() []corev1.NodeCondition {
-	now := metav1.Now()
 	return []corev1.NodeCondition{
 		{
-			Type:               "Ready",
-			Status:             corev1.ConditionTrue,
-			LastHeartbeatTime:  now,
-			LastTransitionTime: now,
-			Reason:             "KubeletReady",
-			Message:            "kubelet is ready.",
+			Type:    "Ready",
+			Status:  corev1.ConditionTrue,
+			Reason:  "KubeletReady",
+			Message: "kubelet is ready.",
 		},
 		{
-			Type:               "OutOfDisk",
-			Status:             corev1.ConditionFalse,
-			LastHeartbeatTime:  now,
-			LastTransitionTime: now,
-			Reason:             "KubeletHasSufficientDisk",
-			Message:            "kubelet has sufficient disk space available",
+			Type:    "OutOfDisk",
+			Status:  corev1.ConditionFalse,
+			Reason:  "KubeletHasSufficientDisk",
+			Message: "kubelet has sufficient disk space available",
 		},
 		{
-			Type:               "MemoryPressure",
-			Status:             corev1.ConditionFalse,
-			LastHeartbeatTime:  now,
-			LastTransitionTime: now,
-			Reason:             "KubeletHasSufficientMemory",
-			Message:            "kubelet has sufficient memory available",
+			Type:    "MemoryPressure",
+			Status:  corev1.ConditionFalse,
+			Reason:  "KubeletHasSufficientMemory",
+			Message: "kubelet has sufficient memory available",
 		},
 		{
-			Type:               "DiskPressure",
-			Status:             corev1.ConditionFalse,
-			LastHeartbeatTime:  now,
-			LastTransitionTime: now,
-			Reason:             "KubeletHasNoDiskPressure",
-			Message:            "kubelet has no disk pressure",
+			Type:    "DiskPressure",
+			Status:  corev1.ConditionFalse,
+			Reason:  "KubeletHasNoDiskPressure",
+			Message: "kubelet has no disk pressure",
 		},
 		{
-			Type:               "NetworkUnavailable",
-			Status:             corev1.ConditionFalse,
-			LastHeartbeatTime:  now,
-			LastTransitionTime: now,
-			Reason:             "RouteCreated",
-			Message:            "RouteController created a route",
+			Type:    "NetworkUnavailable",
+			Status:  corev1.ConditionFalse,
+			Reason:  "RouteCreated",
+			Message: "RouteController created a route",
 		},
 	}
 }
 
-func nodeAddresses() []corev1.NodeAddress {
+func (c *Controller) nodeAddresses() []corev1.NodeAddress {
 	return []corev1.NodeAddress{
 		{
-			Type: corev1.NodeInternalIP,
-			//	Address: hostIP.String(),
+			Type:    corev1.NodeInternalIP,
+			Address: c.NodeIP.String(),
 		},
 	}
 }
@@ -456,6 +417,13 @@ func updateNodeStatusHeartbeat(n *corev1.Node) {
 	}
 }
 
+func updateNodeStatusTransition(n *corev1.Node) {
+	now := metav1.Now()
+	for i := range n.Status.Conditions {
+		n.Status.Conditions[i].LastTransitionTime = now
+	}
+}
+
 func addIp(ip net.IP, add uint64) net.IP {
 	if len(ip) < 8 {
 		return ip
@@ -469,4 +437,34 @@ func addIp(ip net.IP, add uint64) net.IP {
 
 	binary.BigEndian.PutUint64(out[len(out)-8:], i)
 	return out
+}
+
+type ipPool struct {
+	New    func() string
+	used   map[string]struct{}
+	usable map[string]struct{}
+}
+
+func (i *ipPool) Get() string {
+	ip := ""
+	if len(i.usable) != 0 {
+		for s := range i.usable {
+			ip = s
+		}
+	}
+	if ip == "" && i.New != nil {
+		ip = i.New()
+	}
+	delete(i.usable, ip)
+	i.used[ip] = struct{}{}
+	return i.New()
+}
+
+func (i *ipPool) Put(ip string) {
+	delete(i.used, ip)
+	i.usable[ip] = struct{}{}
+}
+
+func (i *ipPool) Use(ip string) {
+	i.used[ip] = struct{}{}
 }
