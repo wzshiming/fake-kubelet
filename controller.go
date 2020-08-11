@@ -9,6 +9,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -32,19 +33,38 @@ func NewController(clientSet *kubernetes.Clientset, name string, hostIP, nodeIP 
 		HostIP:    hostIP,
 		NodeIP:    nodeIP,
 		ipPool: &ipPool{
+			usable: map[string]struct{}{},
+			used:   map[string]struct{}{},
 			New: func() string {
 				index++
 				return addIp(hostIP, index).String()
 			},
-			used:   map[string]struct{}{},
-			usable: map[string]struct{}{},
 		},
 	}
 	return n
 }
 
 func (c *Controller) deletePod(ctx context.Context, pod *corev1.Pod) error {
-	return c.ClientSet.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, *metav1.NewDeleteOptions(0))
+	if len(pod.Finalizers) != 0 {
+		pod.Finalizers = nil
+		pod.ResourceVersion = "0"
+		_, err := c.ClientSet.CoreV1().Pods(pod.Namespace).Update(ctx, pod, metav1.UpdateOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+	}
+
+	err := c.ClientSet.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, *metav1.NewDeleteOptions(0))
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func (c *Controller) lockPod(ctx context.Context, pod *corev1.Pod) error {
@@ -63,18 +83,12 @@ func (c *Controller) lockPod(ctx context.Context, pod *corev1.Pod) error {
 	pod.ResourceVersion = "0"
 	_, err := c.ClientSet.CoreV1().Pods(pod.Namespace).UpdateStatus(ctx, pod, metav1.UpdateOptions{})
 	if err != nil {
-		pod, err = c.ClientSet.CoreV1().Pods(pod.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})
-		if err != nil {
-			return err
+		if errors.IsNotFound(err) {
+			return nil
 		}
-		if c.configurePod(pod) {
-			_, err = c.ClientSet.CoreV1().Pods(pod.Namespace).UpdateStatus(ctx, pod, metav1.UpdateOptions{})
-			if err != nil {
-				return err
-			}
-		}
-		log.Printf("ready %s.%s", pod.Name, pod.Namespace)
+		return err
 	}
+	log.Printf("ready %s.%s", pod.Name, pod.Namespace)
 	return nil
 }
 
@@ -83,16 +97,18 @@ func (c *Controller) LockPodReadyStatus(ctx context.Context) error {
 		FieldSelector: fields.OneTermEqualSelector("spec.nodeName", c.Name).String(),
 	}
 
-	lockCh := make(chan *corev1.Pod, 10)
-	go func() {
-		for pod := range lockCh {
-			err := c.lockPod(ctx, pod)
-			if err != nil {
-				log.Println(err)
-				continue
+	lockCh := make(chan *corev1.Pod)
+	for i := 0; i != 2; i++ {
+		go func() {
+			for pod := range lockCh {
+				err := c.lockPod(ctx, pod)
+				if err != nil {
+					log.Println(err)
+					continue
+				}
 			}
-		}
-	}()
+		}()
+	}
 
 	watcher, err := c.ClientSet.CoreV1().Pods(corev1.NamespaceAll).Watch(ctx, opt)
 	if err != nil {
@@ -134,13 +150,6 @@ func (c *Controller) LockPodReadyStatus(ctx context.Context) error {
 		}
 	}()
 
-	list, err := c.ClientSet.CoreV1().Pods(corev1.NamespaceAll).List(ctx, opt)
-	if err != nil {
-		return err
-	}
-	for _, item := range list.Items {
-		lockCh <- &item
-	}
 	return nil
 }
 

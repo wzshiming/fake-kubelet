@@ -20,7 +20,7 @@ var (
 	hostIP     = net.ParseIP(getEnv("HOST_IP", "10.0.0.2"))
 	nodeIP     = net.ParseIP(getEnv("NODE_IP", "10.0.0.1"))
 	nodeName   = getEnv("NODE_NAME", "fake")
-	kubeconfig = ""
+	kubeconfig = getEnv("KUBECONFIG", "")
 	master     = ""
 )
 
