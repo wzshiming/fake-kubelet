@@ -74,6 +74,7 @@ func (c *Controller) lockPod(ctx context.Context, pod *corev1.Pod) error {
 		if err != nil {
 			return err
 		}
+		log.Printf("Delete %s.%s", pod.Name, pod.Namespace)
 		return nil
 	}
 
@@ -88,28 +89,57 @@ func (c *Controller) lockPod(ctx context.Context, pod *corev1.Pod) error {
 		}
 		return err
 	}
-	log.Printf("ready %s.%s", pod.Name, pod.Namespace)
+	log.Printf("Ready %s.%s", pod.Name, pod.Namespace)
 	return nil
 }
 
 func (c *Controller) LockPodReadyStatus(ctx context.Context) error {
-	opt := metav1.ListOptions{
-		FieldSelector: fields.OneTermEqualSelector("spec.nodeName", c.Name).String(),
-	}
-
 	lockCh := make(chan *corev1.Pod)
-	for i := 0; i != 2; i++ {
-		go func() {
-			for pod := range lockCh {
+	go func() {
+		for {
+			select {
+			case pod, ok := <-lockCh:
+				if !ok {
+					return
+				}
 				err := c.lockPod(ctx, pod)
 				if err != nil {
-					log.Println(err)
+					log.Printf("Error lock pod %s", err)
 					continue
 				}
+			case <-ctx.Done():
+				return
 			}
-		}()
+
+		}
+	}()
+
+	lockPendingOpt := metav1.ListOptions{
+		FieldSelector: fields.AndSelectors(
+			fields.OneTermEqualSelector("spec.nodeName", c.Name),
+			fields.OneTermEqualSelector("status.phase", string(corev1.PodPending)),
+		).String(),
+	}
+	err := c.lockPodReadyStatus(ctx, lockCh, lockPendingOpt)
+	if err != nil {
+		return err
 	}
 
+	lockOtherOpt := metav1.ListOptions{
+		FieldSelector: fields.AndSelectors(
+			fields.OneTermEqualSelector("spec.nodeName", c.Name),
+			fields.OneTermNotEqualSelector("status.phase", string(corev1.PodPending)),
+		).String(),
+	}
+	err = c.lockPodReadyStatus(ctx, lockCh, lockOtherOpt)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Controller) lockPodReadyStatus(ctx context.Context, ch chan<- *corev1.Pod, opt metav1.ListOptions) error {
 	watcher, err := c.ClientSet.CoreV1().Pods(corev1.NamespaceAll).Watch(ctx, opt)
 	if err != nil {
 		return err
@@ -123,7 +153,7 @@ func (c *Controller) LockPodReadyStatus(ctx context.Context) error {
 				if !ok {
 					watcher, err := c.ClientSet.CoreV1().Pods(corev1.NamespaceAll).Watch(ctx, opt)
 					if err != nil {
-						log.Println(err)
+						log.Printf("Error get pod %s", err)
 						return
 					}
 					rc = watcher.ResultChan()
@@ -132,16 +162,12 @@ func (c *Controller) LockPodReadyStatus(ctx context.Context) error {
 				switch event.Type {
 				case watch.Added, watch.Modified:
 					pod := event.Object.(*corev1.Pod)
-					lockCh <- pod
-					log.Printf("%s %s.%s", event.Type, pod.Name, pod.Namespace)
+					ch <- pod
 				case watch.Deleted:
-					pod := event.Object.(*corev1.Pod)
-					log.Printf("%s %s.%s", event.Type, pod.Name, pod.Namespace)
 				default:
-					log.Printf("not handle %s", event.Type)
 				}
 			case <-ctx.Done():
-				close(lockCh)
+				close(ch)
 				watcher.Stop()
 				log.Printf("stop locking pod ready status in nodes %s", c.Name)
 				return
@@ -161,21 +187,27 @@ func (c *Controller) lockNode(ctx context.Context, node *corev1.Node) error {
 		return nil
 	}
 	node.ResourceVersion = "0"
+	_, err := c.ClientSet.CoreV1().Nodes().UpdateStatus(ctx, node, metav1.UpdateOptions{})
+	return err
+}
 
+func (c *Controller) heartbeatNode(ctx context.Context, node *corev1.Node) error {
+	node.ResourceVersion = "0"
+	updateNodeStatusHeartbeat(node)
 	_, err := c.ClientSet.CoreV1().Nodes().UpdateStatus(ctx, node, metav1.UpdateOptions{})
 	return err
 }
 
 func (c *Controller) LockNodeReadyStatus(ctx context.Context) error {
 	node, err := c.ClientSet.CoreV1().Nodes().Get(ctx, c.Name, metav1.GetOptions{})
-	if err == nil {
-		node.ResourceVersion = "0"
-		c.lockNode(ctx, node)
-		if err != nil {
-			log.Println(err)
-		}
-	} else {
-		log.Println(err)
+	if err != nil {
+		return err
+	}
+
+	node.ResourceVersion = "0"
+	err = c.lockNode(ctx, node)
+	if err != nil {
+		return err
 	}
 
 	selector := metav1.ListOptions{
@@ -196,7 +228,7 @@ func (c *Controller) LockNodeReadyStatus(ctx context.Context) error {
 				if !ok {
 					watcher, err := c.ClientSet.CoreV1().Nodes().Watch(ctx, selector)
 					if err != nil {
-						log.Println(err)
+						log.Printf("Error watch node %s", err)
 						return
 					}
 					rc = watcher.ResultChan()
@@ -207,26 +239,24 @@ func (c *Controller) LockNodeReadyStatus(ctx context.Context) error {
 					node := event.Object.(*corev1.Node)
 					err := c.lockNode(ctx, node)
 					if err != nil {
-						log.Println(err)
+						log.Printf("Error lock node %s", err)
 						continue
 					}
 				}
 			case <-th.C:
+				th.Reset(heartbeatInterval)
 				node, err := c.ClientSet.CoreV1().Nodes().Get(ctx, c.Name, metav1.GetOptions{})
 				if err != nil {
-					log.Println(err)
+					log.Printf("Error get node %s", err)
 					continue
 				}
-				node.ResourceVersion = "0"
-				updateNodeStatusHeartbeat(node)
-				_, err = c.ClientSet.CoreV1().Nodes().UpdateStatus(ctx, node, metav1.UpdateOptions{})
+				err = c.heartbeatNode(ctx, node)
 				if err != nil {
-					log.Println(err)
+					log.Printf("Error update heartbeat %s", err)
 				}
-				th.Reset(heartbeatInterval)
 			case <-ctx.Done():
 				watcher.Stop()
-				log.Printf("stop locking nodes %s ready status", c.Name)
+				log.Printf("Stop locking nodes %s ready status", c.Name)
 				return
 			}
 		}

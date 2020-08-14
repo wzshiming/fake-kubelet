@@ -53,12 +53,13 @@ func main() {
 		return
 	}
 
+	log.Printf("Watch fake nodes %q", nodeName)
+
 	err = n.LockPodReadyStatus(context.Background())
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	log.Printf("watch fake nodes %q", nodeName)
 	<-ctx.Done()
 }
 
