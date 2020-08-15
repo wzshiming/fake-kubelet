@@ -20,19 +20,13 @@ rules:
       - nodes
     verbs:
       - get
-      - watch
   - apiGroups:
       - ""
     resources:
       - nodes/status
     verbs:
       - update
-  - apiGroups:
-      - ""
-    resources:
-      - pods/status
-    verbs:
-      - update
+      - patch
   - apiGroups:
       - ""
     resources:
@@ -42,6 +36,14 @@ rules:
       - list
       - delete
       - update
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - pods/status
+    verbs:
+      - update
+      - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -77,28 +79,170 @@ spec:
       key: virtual-kubelet.io/provider
       value: fake
 ---
-apiVersion: v1
-kind: Pod
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: fake-kubelet
   namespace: kube-system
-  labels:
-    app: fake-kubelet
 spec:
-  containers:
-    - name: fake-kubelet
-      image: wzshiming/fake-kubelet
-      imagePullPolicy: IfNotPresent
-      env:
-        - name: NODE_NAME
-          value: fake
-        - name: HOST_IP
-          value: 10.0.0.1
-        - name: NODE_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.podIP
-  serviceAccount: fake-kubelet
-  serviceAccountName: fake-kubelet
-  restartPolicy: Always
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fake-kubelet
+  template:
+    metadata:
+      name: fake-kubelet
+      namespace: kube-system
+      labels:
+        app: fake-kubelet
+    spec:
+      containers:
+        - name: fake-kubelet
+          image: wzshiming/fake-kubelet:v0.1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NODE_NAME
+              value: fake
+            - name: CIDR
+              value: 10.0.0.1/24
+            - name: HEALTH_ADDRESS
+              value: :8080
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_STATUS_TEMPLATE
+              value: |-
+                conditions:
+                - lastTransitionTime: {{ Now }}
+                  status: "True"
+                  type: Initialized
+                - lastTransitionTime: {{ Now }}
+                  status: "True"
+                  type: Ready
+                - lastTransitionTime: {{ Now }}
+                  status: "True"
+                  type: ContainersReady
+                - lastTransitionTime: {{ Now }}
+                  status: "True"
+                  type: PodScheduled
+                {{ range .Spec.ReadinessGates }}
+                - lastTransitionTime: {{ Now }}
+                  status: "True"
+                  type: {{ .ConditionType }}
+                {{ end }}
+                {{ if .Spec.Containers }}
+                containerStatuses:
+                {{ range .Spec.Containers }}
+                - image: {{ .Image }}
+                  name: {{ .Name }}
+                  ready: true
+                  restartCount: 0
+                  started: true
+                  state:
+                    running:
+                      startedAt: {{ Now }}
+                {{ end }}
+                {{ end }}
+                {{ if .Spec.InitContainers }}
+                initContainerStatuses:
+                {{ range .Spec.InitContainers }}
+                - image: {{ .Image }}
+                  name: {{ .Name }}
+                  ready: true
+                  restartCount: 0
+                  state:
+                    terminated:
+                      exitCode: 0
+                      finishedAt: {{ Now }}
+                      reason: Completed
+                      startedAt: {{ Now }}
+                {{ end }}
+                {{ end }}
+                phase: Running
+                startTime: {{ Now }}
+                hostIP: {{ if .Status.HostIP }}{{ .Status.HostIP }}{{ else }}{{ NodeIP }}{{ end }}
+                podIP: {{ if .Status.PodIP }}{{ .Status.PodIP }}{{ else }}{{ PodIP }}{{ end }}
+            - name: NODE_HEARTBEAT_TEMPLATE
+              value: |-
+                conditions:
+                - lastHeartbeatTime: {{ Now }}
+                  lastTransitionTime: {{ StartTime }}
+                  message: kubelet is ready.
+                  reason: KubeletReady
+                  status: "True"
+                  type: Ready
+                - lastHeartbeatTime: {{ Now }}
+                  lastTransitionTime: {{ StartTime }}
+                  message: kubelet has sufficient disk space available
+                  reason: KubeletHasSufficientDisk
+                  status: "False"
+                  type: OutOfDisk
+                - lastHeartbeatTime: {{ Now }}
+                  lastTransitionTime: {{ StartTime }}
+                  message: kubelet has sufficient memory available
+                  reason: KubeletHasSufficientMemory
+                  status: "False"
+                  type: MemoryPressure
+                - lastHeartbeatTime: {{ Now }}
+                  lastTransitionTime: {{ StartTime }}
+                  message: kubelet has no disk pressure
+                  reason: KubeletHasNoDiskPressure
+                  status: "False"
+                  type: DiskPressure
+                - lastHeartbeatTime: {{ Now }}
+                  lastTransitionTime: {{ StartTime }}
+                  message: RouteController created a route
+                  reason: RouteCreated
+                  status: "False"
+                  type: NetworkUnavailable
+            - name: NODE_INITIALIZATION_TEMPLATE
+              value: |-
+                addresses:
+                - address: {{ NodeIP }}
+                  type: InternalIP
+                allocatable:
+                  cpu: 1k
+                  memory: 1Ti
+                  pods: 1M
+                capacity:
+                  cpu: 1k
+                  memory: 1Ti
+                  pods: 1M
+                daemonEndpoints:
+                  kubeletEndpoint:
+                    Port: 0
+                nodeInfo:
+                  architecture: amd64
+                  bootID: ""
+                  containerRuntimeVersion: ""
+                  kernelVersion: ""
+                  kubeProxyVersion: ""
+                  kubeletVersion: fake
+                  machineID: ""
+                  operatingSystem: Linux
+                  osImage: ""
+                  systemUUID: ""
+                phase: Running
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 5
+            timeoutSeconds: 2
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 5
+            timeoutSeconds: 2
+            periodSeconds: 10
+            failureThreshold: 3
+      serviceAccount: fake-kubelet
+      serviceAccountName: fake-kubelet
+      restartPolicy: Always
 ---
