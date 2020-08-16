@@ -3,6 +3,8 @@ package fake_kubelet
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -68,13 +70,40 @@ func toTemplateJson(text string, original interface{}, funcMap template.FuncMap)
 		v = temp
 	}
 	temp := v.(*template.Template)
+	buf := bufferPool.Get().(*bytes.Buffer)
+	defer bufferPool.Put(buf)
 
-	buf := bytes.Buffer{}
-	err := temp.Execute(&buf, original)
+	buf.Reset()
+	err := json.NewEncoder(buf).Encode(original)
 	if err != nil {
 		return nil, err
 	}
-	return yaml.YAMLToJSON(buf.Bytes())
+
+	var data interface{}
+	decoder := json.NewDecoder(buf)
+	decoder.UseNumber()
+	err = decoder.Decode(&data)
+	if err != nil {
+		return nil, err
+	}
+
+	buf.Reset()
+	err = temp.Execute(buf, data)
+	if err != nil {
+		return nil, err
+	}
+	out, err := yaml.YAMLToJSON(buf.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", err, buf.String())
+	}
+	return out, nil
 }
 
-var templateCache = sync.Map{}
+var (
+	templateCache = sync.Map{}
+	bufferPool    = sync.Pool{
+		New: func() interface{} {
+			return &bytes.Buffer{}
+		},
+	}
+)

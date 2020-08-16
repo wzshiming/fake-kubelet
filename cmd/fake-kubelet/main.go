@@ -138,56 +138,56 @@ func getEnv(name string, defaults string) string {
 
 var (
 	defaultPodStatusTemplate = `
+{{ $startTime := .metadata.creationTimestamp }}
 conditions:
-- lastTransitionTime: {{ Now }}
+- lastTransitionTime: {{ $startTime }}
   status: "True"
   type: Initialized
-- lastTransitionTime: {{ Now }}
+- lastTransitionTime: {{ $startTime }}
   status: "True"
   type: Ready
-- lastTransitionTime: {{ Now }}
+- lastTransitionTime: {{ $startTime }}
   status: "True"
   type: ContainersReady
-- lastTransitionTime: {{ Now }}
+- lastTransitionTime: {{ $startTime }}
   status: "True"
   type: PodScheduled
-{{ range .Spec.ReadinessGates }}
-- lastTransitionTime: {{ Now }}
+{{ range .spec.readinessGates }}
+- lastTransitionTime: {{ $startTime }}
   status: "True"
-  type: {{ .ConditionType }}
+  type: {{ .conditionType }}
 {{ end }}
-{{ if .Spec.Containers }}
+{{ if .spec.containers }}
 containerStatuses:
-{{ range .Spec.Containers }}
-- image: {{ .Image }}
-  name: {{ .Name }}
+{{ range .spec.containers }}
+- image: {{ .image }}
+  name: {{ .name }}
   ready: true
   restartCount: 0
-  started: true
   state:
     running:
-      startedAt: {{ Now }}
+      startedAt: {{ $startTime }}
 {{ end }}
 {{ end }}
-{{ if .Spec.InitContainers }}
+{{ if .spec.initContainers }}
 initContainerStatuses:
-{{ range .Spec.InitContainers }}
-- image: {{ .Image }}
-  name: {{ .Name }}
+{{ range .spec.initContainers }}
+- image: {{ .image }}
+  name: {{ .name }}
   ready: true
   restartCount: 0
   state:
     terminated:
       exitCode: 0
-      finishedAt: {{ Now }}
+      finishedAt: {{ $startTime }}
       reason: Completed
-      startedAt: {{ Now }}
+      startedAt: {{ $startTime }}
 {{ end }}
 {{ end }}
 phase: Running
-startTime: {{ Now }}
-hostIP: {{ if .Status.HostIP }}{{ .Status.HostIP }}{{ else }}{{ NodeIP }}{{ end }}
-podIP: {{ if .Status.PodIP }}{{ .Status.PodIP }}{{ else }}{{ PodIP }}{{ end }}
+startTime: {{ $startTime }}
+hostIP: {{ if .status.hostIP }} {{ .status.hostIP }} {{ else }} {{ NodeIP }} {{ end }}
+podIP: {{ if .status.podIP }} {{ .status.podIP }} {{ else }} {{ PodIP }} {{ end }}
 `
 
 	defaultNodeHeartbeatTemplate = `

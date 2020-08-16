@@ -1,11 +1,11 @@
 package fake_kubelet
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log"
 	"net"
-	"reflect"
 	"strings"
 	"text/template"
 	"time"
@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 )
@@ -118,6 +119,7 @@ func (c *Controller) lockPod(ctx context.Context, pod *corev1.Pod) error {
 		return err
 	}
 	if !ok {
+		log.Printf("Skip %s.%s", pod.Name, pod.Namespace)
 		return nil
 	}
 	pod.ResourceVersion = "0"
@@ -285,13 +287,28 @@ func (c *Controller) configurePod(pod *corev1.Pod) (bool, error) {
 		return false, err
 	}
 
-	podStatus := corev1.PodStatus{}
-	err = json.Unmarshal(patch, &podStatus)
+	original, err := json.Marshal(pod.Status)
 	if err != nil {
 		return false, err
 	}
 
-	if reflect.DeepEqual(podStatus, pod.Status) {
+	sum, err := strategicpatch.StrategicMergePatch(original, patch, pod.Status)
+	if err != nil {
+		return false, err
+	}
+
+	podStatus := corev1.PodStatus{}
+	err = json.Unmarshal(sum, &podStatus)
+	if err != nil {
+		return false, err
+	}
+
+	dist, err := json.Marshal(podStatus)
+	if err != nil {
+		return false, err
+	}
+
+	if bytes.Equal(original, dist) {
 		return false, nil
 	}
 	pod.Status = podStatus
