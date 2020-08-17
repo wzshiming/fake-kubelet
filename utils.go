@@ -29,12 +29,15 @@ func addIp(ip net.IP, add uint64) net.IP {
 }
 
 type ipPool struct {
+	mut    sync.Mutex
 	New    func() string
 	used   map[string]struct{}
 	usable map[string]struct{}
 }
 
 func (i *ipPool) Get() string {
+	i.mut.Lock()
+	defer i.mut.Unlock()
 	ip := ""
 	if len(i.usable) != 0 {
 		for s := range i.usable {
@@ -50,11 +53,15 @@ func (i *ipPool) Get() string {
 }
 
 func (i *ipPool) Put(ip string) {
+	i.mut.Lock()
+	defer i.mut.Unlock()
 	delete(i.used, ip)
 	i.usable[ip] = struct{}{}
 }
 
 func (i *ipPool) Use(ip string) {
+	i.mut.Lock()
+	defer i.mut.Unlock()
 	i.used[ip] = struct{}{}
 }
 

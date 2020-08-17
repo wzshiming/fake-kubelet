@@ -151,28 +151,13 @@ func (c *Controller) LockPodStatus(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			}
-
 		}
 	}()
 
 	lockPendingOpt := metav1.ListOptions{
-		FieldSelector: fields.AndSelectors(
-			fields.OneTermEqualSelector("spec.nodeName", c.name),
-			fields.OneTermEqualSelector("status.phase", string(corev1.PodPending)),
-		).String(),
+		FieldSelector: fields.OneTermEqualSelector("spec.nodeName", c.name).String(),
 	}
 	err := c.lockPodStatus(ctx, lockCh, lockPendingOpt)
-	if err != nil {
-		return err
-	}
-
-	lockOtherOpt := metav1.ListOptions{
-		FieldSelector: fields.AndSelectors(
-			fields.OneTermEqualSelector("spec.nodeName", c.name),
-			fields.OneTermNotEqualSelector("status.phase", string(corev1.PodPending)),
-		).String(),
-	}
-	err = c.lockPodStatus(ctx, lockCh, lockOtherOpt)
 	if err != nil {
 		return err
 	}
@@ -188,17 +173,25 @@ func (c *Controller) lockPodStatus(ctx context.Context, ch chan<- *corev1.Pod, o
 
 	go func() {
 		rc := watcher.ResultChan()
+	loop:
 		for {
 			select {
 			case event, ok := <-rc:
 				if !ok {
-					watcher, err := c.clientSet.CoreV1().Pods(corev1.NamespaceAll).Watch(ctx, opt)
-					if err != nil {
-						log.Fatalf("Error get pod %s", err)
-						return
+					for {
+						watcher, err := c.clientSet.CoreV1().Pods(corev1.NamespaceAll).Watch(ctx, opt)
+						if err == nil {
+							rc = watcher.ResultChan()
+							continue loop
+						}
+
+						log.Printf("Error watch pod: %s", err)
+						select {
+						case <-ctx.Done():
+							break loop
+						case <-time.After(time.Second * 5):
+						}
 					}
-					rc = watcher.ResultChan()
-					continue
 				}
 				switch event.Type {
 				case watch.Added:
@@ -209,15 +202,13 @@ func (c *Controller) lockPodStatus(ctx context.Context, ch chan<- *corev1.Pod, o
 					if pod.DeletionTimestamp != nil {
 						ch <- pod
 					}
-				case watch.Deleted:
-				default:
 				}
 			case <-ctx.Done():
 				watcher.Stop()
-				log.Printf("Stop locking pod ready status in nodes %s", c.name)
-				return
+				break loop
 			}
 		}
+		log.Printf("Stop locking pod status in nodes %s", c.name)
 	}()
 
 	return nil
@@ -269,7 +260,7 @@ func (c *Controller) LockNodeStatus(ctx context.Context) error {
 					log.Printf("Error update heartbeat %s", err)
 				}
 			case <-ctx.Done():
-				log.Printf("Stop locking nodes %s ready status", c.name)
+				log.Printf("Stop locking nodes %s status", c.name)
 				return
 			}
 		}
@@ -278,6 +269,12 @@ func (c *Controller) LockNodeStatus(ctx context.Context) error {
 }
 
 func (c *Controller) configurePod(pod *corev1.Pod) (bool, error) {
+
+	// Mark the pod IP that existed before the kubelet was started
+	if c.cidrIPNet.Contains(net.ParseIP(pod.Status.PodIP)) {
+		c.ipPool.Use(pod.Status.PodIP)
+	}
+
 	merge := c.statusTemplate
 	if m, ok := pod.Annotations[mergeLabel]; ok && strings.TrimSpace(m) != "" {
 		merge = m

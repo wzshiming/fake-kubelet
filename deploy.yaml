@@ -72,6 +72,7 @@ metadata:
     kubernetes.io/os: linux
     kubernetes.io/role: agent
     type: virtual-kubelet
+    app: fake-kubelet
   name: fake
 spec:
   taints:
@@ -84,6 +85,8 @@ kind: ConfigMap
 metadata:
   name: fake-kubelet
   namespace: kube-system
+  labels:
+    app: fake-kubelet
 data:
   pod_status_template: |-
     {{ $startTime := .metadata.creationTimestamp }}
@@ -215,7 +218,7 @@ spec:
     spec:
       containers:
         - name: fake-kubelet
-          image: wzshiming/fake-kubelet:v0.2.0
+          image: wzshiming/fake-kubelet:v0.2.1
           imagePullPolicy: IfNotPresent
           env:
             - name: NODE_NAME
@@ -248,7 +251,7 @@ spec:
               path: /health
               port: 8080
               scheme: HTTP
-            initialDelaySeconds: 5
+            initialDelaySeconds: 2
             timeoutSeconds: 2
             periodSeconds: 10
             failureThreshold: 3
@@ -257,7 +260,7 @@ spec:
               path: /health
               port: 8080
               scheme: HTTP
-            initialDelaySeconds: 5
+            initialDelaySeconds: 2
             timeoutSeconds: 2
             periodSeconds: 10
             failureThreshold: 3
