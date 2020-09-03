@@ -39,6 +39,7 @@ func init() {
 	pflag.StringVarP(&nodeName, "node_name", "n", nodeName, "node name")
 	pflag.StringVar(&kubeconfig, "kubeconfig", kubeconfig, "kubeconfig")
 	pflag.StringVar(&master, "master", master, "master")
+	pflag.Parse()
 	ip, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {
 		pflag.PrintDefaults()
