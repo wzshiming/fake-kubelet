@@ -218,7 +218,7 @@ spec:
     spec:
       containers:
         - name: fake-kubelet
-          image: wzshiming/fake-kubelet:v0.2.1
+          image: wzshiming/fake-kubelet:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: NODE_NAME
