@@ -11,8 +11,6 @@ import (
 	"github.com/spf13/pflag"
 	fake_kubelet "github.com/wzshiming/fake-kubelet"
 	"github.com/wzshiming/notify"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/deprecated/scheme"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -64,7 +62,7 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	n := fake_kubelet.NewController(cliset, strings.SplitN(nodeName,",",-1), cidrIP, cidrIPNet, nodeIP, statusPodTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
+	n := fake_kubelet.NewController(cliset, strings.SplitN(nodeName, ",", -1), cidrIP, cidrIPNet, nodeIP, statusPodTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
 
 	err = n.LockNodeStatus(ctx)
 	if err != nil {
@@ -119,13 +117,6 @@ func newClientset(master, kubeconfig string) (*kubernetes.Clientset, error) {
 }
 
 func setConfigDefaults(config *rest.Config) error {
-	config.GroupVersion = &schema.GroupVersion{Group: "", Version: "v1"}
-	if config.APIPath == "" {
-		config.APIPath = "/api"
-	}
-	if config.NegotiatedSerializer == nil {
-		config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
-	}
 	config.RateLimiter = flowcontrol.NewFakeAlwaysRateLimiter()
 	return rest.SetKubernetesDefaults(config)
 }

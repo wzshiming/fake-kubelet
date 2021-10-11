@@ -66,8 +66,6 @@ metadata:
   annotations:
     node.alpha.kubernetes.io/ttl: "0"
   labels:
-    alpha.service-controller.kubernetes.io/exclude-balancer: "true"
-    beta.kubernetes.io/os: linux
     kubernetes.io/hostname: fake
     kubernetes.io/os: linux
     kubernetes.io/role: agent
