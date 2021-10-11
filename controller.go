@@ -26,7 +26,7 @@ type Controller struct {
 	cidrIP                     net.IP
 	cidrIPNet                  *net.IPNet
 	nodeIP                     net.IP
-	name                       string
+	nodes                      []string
 	clientSet                  *kubernetes.Clientset
 	ipPool                     *ipPool
 	statusTemplate             string
@@ -35,13 +35,13 @@ type Controller struct {
 	funcMap                    template.FuncMap
 }
 
-func NewController(clientSet *kubernetes.Clientset, name string, cidrIP net.IP, cidrIPNet *net.IPNet, nodeIP net.IP, statusTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate string) *Controller {
+func NewController(clientSet *kubernetes.Clientset, nodes []string, cidrIP net.IP, cidrIPNet *net.IPNet, nodeIP net.IP, statusTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate string) *Controller {
 	var index uint64
 	startTime := time.Now().Format(time.RFC3339)
 	node := nodeIP.String()
 	n := &Controller{
 		clientSet: clientSet,
-		name:      name,
+		nodes:     nodes,
 		cidrIP:    cidrIP,
 		cidrIPNet: cidrIPNet,
 		nodeIP:    nodeIP,
@@ -135,6 +135,16 @@ func (c *Controller) lockPod(ctx context.Context, pod *corev1.Pod) error {
 }
 
 func (c *Controller) LockPodStatus(ctx context.Context) error {
+	for _, node := range c.nodes {
+		err := c.lockPodStatus(ctx, node)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) lockPodStatus(ctx context.Context, nodeName string) error {
 	lockCh := make(chan *corev1.Pod)
 	go func() {
 		for {
@@ -155,9 +165,9 @@ func (c *Controller) LockPodStatus(ctx context.Context) error {
 	}()
 
 	lockPendingOpt := metav1.ListOptions{
-		FieldSelector: fields.OneTermEqualSelector("spec.nodeName", c.name).String(),
+		FieldSelector: fields.OneTermEqualSelector("spec.nodeName", nodeName).String(),
 	}
-	err := c.lockPodStatus(ctx, lockCh, lockPendingOpt)
+	err := c.lockPodStatusWithNode(ctx, lockCh, lockPendingOpt)
 	if err != nil {
 		return err
 	}
@@ -165,7 +175,7 @@ func (c *Controller) LockPodStatus(ctx context.Context) error {
 	return nil
 }
 
-func (c *Controller) lockPodStatus(ctx context.Context, ch chan<- *corev1.Pod, opt metav1.ListOptions) error {
+func (c *Controller) lockPodStatusWithNode(ctx context.Context, ch chan<- *corev1.Pod, opt metav1.ListOptions) error {
 	watcher, err := c.clientSet.CoreV1().Pods(corev1.NamespaceAll).Watch(ctx, opt)
 	if err != nil {
 		return err
@@ -208,7 +218,7 @@ func (c *Controller) lockPodStatus(ctx context.Context, ch chan<- *corev1.Pod, o
 				break loop
 			}
 		}
-		log.Printf("Stop locking pod status in nodes %s", c.name)
+		log.Printf("Stop locking pod status in nodes %s", c.nodes)
 	}()
 
 	return nil
@@ -233,7 +243,17 @@ func (c *Controller) heartbeatNode(ctx context.Context, node *corev1.Node) error
 }
 
 func (c *Controller) LockNodeStatus(ctx context.Context) error {
-	node, err := c.clientSet.CoreV1().Nodes().Get(ctx, c.name, metav1.GetOptions{})
+	for _, node := range c.nodes {
+		err := c.lockNodeStatus(ctx, node)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) lockNodeStatus(ctx context.Context, nodeName string) error {
+	node, err := c.clientSet.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -260,7 +280,7 @@ func (c *Controller) LockNodeStatus(ctx context.Context) error {
 					log.Printf("Error update heartbeat %s", err)
 				}
 			case <-ctx.Done():
-				log.Printf("Stop locking nodes %s status", c.name)
+				log.Printf("Stop locking nodes %s status", c.nodes)
 				return
 			}
 		}

@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/spf13/pflag"
 	fake_kubelet "github.com/wzshiming/fake-kubelet"
@@ -63,7 +64,7 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	n := fake_kubelet.NewController(cliset, nodeName, cidrIP, cidrIPNet, nodeIP, statusPodTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
+	n := fake_kubelet.NewController(cliset, strings.SplitN(nodeName,",",-1), cidrIP, cidrIPNet, nodeIP, statusPodTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
 
 	err = n.LockNodeStatus(ctx)
 	if err != nil {
