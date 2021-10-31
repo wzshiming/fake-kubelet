@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/wzshiming/fake-kubelet/proto"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
 	"net"
 	"strings"
@@ -35,7 +38,91 @@ type Controller struct {
 	funcMap                    template.FuncMap
 }
 
-func NewController(clientSet *kubernetes.Clientset, nodes []string, cidrIP net.IP, cidrIPNet *net.IPNet, nodeIP net.IP, statusTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate string) *Controller {
+type GrpcServer struct {
+	controller *Controller
+	proto.UnimplementedFakekubeletServer
+}
+
+func (server *GrpcServer) PatchFuturePodStatus(
+	ctx context.Context,
+	msg *proto.PatchPodStatusMsg,
+) (*emptypb.Empty, error) {
+	log.Printf("Patching %s:%s with => %s", msg.Namespace, msg.PodName, msg.Patch)
+
+	return &emptypb.Empty{}, nil
+}
+
+func (server *GrpcServer) PatchPodStatus(
+	ctx context.Context,
+	msg *proto.PatchPodStatusMsg,
+) (*emptypb.Empty, error) {
+	log.Printf("Patching %s:%s with => %s", msg.Namespace, msg.PodName, msg.Patch)
+
+	pod, err := server.controller.clientSet.CoreV1().Pods(msg.Namespace).Get(
+		ctx, msg.PodName, metav1.GetOptions{})
+	if err != nil {
+		log.Printf("Error getting pod: %+v", err)
+		return &emptypb.Empty{}, err
+	}
+	log.Printf("Got pod %s", pod.Name)
+
+	merge := msg.Patch
+	if m, ok := pod.Annotations[mergeLabel]; ok && strings.TrimSpace(m) != "" {
+		 merge = m
+		 log.Printf("Merge is now %s", merge)
+	}
+
+	patch, err := toTemplateJson(merge, pod, server.controller.funcMap)
+	if err != nil {
+		log.Printf("toTemplate %+v", err)
+		return &emptypb.Empty{}, nil
+	}
+
+	original, err := json.Marshal(pod.Status)
+	if err != nil {
+		log.Printf("marshal %+v", err)
+		return &emptypb.Empty{}, nil
+	}
+
+	log.Printf(string(patch))
+	sum, err := strategicpatch.StrategicMergePatch(original, patch, pod.Status)
+	if err != nil {
+		log.Printf("patch %+v", err)
+		return &emptypb.Empty{}, nil
+	}
+	podStatus := corev1.PodStatus{}
+	err = json.Unmarshal(sum, &podStatus)
+	if err != nil {
+		return &emptypb.Empty{}, nil
+	}
+
+	_, err = json.Marshal(podStatus)
+	if err != nil {
+		return &emptypb.Empty{}, nil
+	}
+
+	pod.Status = podStatus
+
+	_, err = server.controller.clientSet.CoreV1().Pods(pod.Namespace).UpdateStatus(
+		ctx, pod, metav1.UpdateOptions{})
+	if err != nil {
+		 if errors.IsNotFound(err) {
+			 return &emptypb.Empty{}, nil
+		 }
+		 return &emptypb.Empty{}, nil
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+func NewController(
+	clientSet *kubernetes.Clientset,
+	nodes []string,
+	cidrIP net.IP,
+	cidrIPNet *net.IPNet,
+	nodeIP net.IP,
+	statusTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate string,
+) *Controller {
 	var index uint64
 	startTime := time.Now().Format(time.RFC3339)
 	node := nodeIP.String()
@@ -80,6 +167,23 @@ var (
 	deleteOpt        = *metav1.NewDeleteOptions(0)
 )
 
+func RunGrpcServer(controller *Controller) {
+	go func() {
+		lis, err := net.Listen("tcp", ":9988")
+		if err != nil {
+			log.Fatalf("failed to listen: %v", err)
+		}
+		s := grpc.NewServer()
+		proto.RegisterFakekubeletServer(s, &GrpcServer{
+			controller: controller,
+		})
+		log.Printf("server listening at %v", lis.Addr())
+		if err := s.Serve(lis); err != nil {
+			log.Fatalf("failed to serve: %v", err)
+		}
+	}()
+}
+
 func (c *Controller) deletePod(ctx context.Context, pod *corev1.Pod) error {
 	if len(pod.Finalizers) != 0 {
 		_, err := c.clientSet.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType, removeFinalizers, metav1.PatchOptions{})
@@ -114,7 +218,7 @@ func (c *Controller) lockPod(ctx context.Context, pod *corev1.Pod) error {
 		return nil
 	}
 
-	ok, err := c.configurePod(pod)
+	ok, err := c.configurePod(pod, ctx)
 	if err != nil {
 		return err
 	}
@@ -288,7 +392,7 @@ func (c *Controller) lockNodeStatus(ctx context.Context, nodeName string) error 
 	return nil
 }
 
-func (c *Controller) configurePod(pod *corev1.Pod) (bool, error) {
+func (c *Controller) configurePod(pod *corev1.Pod, ctx context.Context) (bool, error) {
 
 	// Mark the pod IP that existed before the kubelet was started
 	if c.cidrIPNet.Contains(net.ParseIP(pod.Status.PodIP)) {

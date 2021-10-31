@@ -1,0 +1,15 @@
+syntax = "proto3";
+import "google/protobuf/empty.proto";
+package fakekubelet;
+option go_package="fake_kuebelet/proto";
+
+service fakekubelet {
+  rpc PatchPodStatus (PatchPodStatusMsg) returns (google.protobuf.Empty) {}
+  rpc PatchFuturePodStatus (PatchPodStatusMsg) returns (google.protobuf.Empty) {}
+}
+
+message PatchPodStatusMsg {
+  string namespace = 1;
+  string pod_name = 2;
+  string patch = 3;
+}

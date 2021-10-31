@@ -78,191 +78,191 @@ spec:
       key: virtual-kubelet.io/provider
       value: fake
 ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: fake-kubelet
-  namespace: kube-system
-  labels:
-    app: fake-kubelet
-data:
-  pod_status_template: |-
-    {{ $startTime := .metadata.creationTimestamp }}
-    conditions:
-    - lastTransitionTime: {{ $startTime }}
-      status: "True"
-      type: Initialized
-    - lastTransitionTime: {{ $startTime }}
-      status: "True"
-      type: Ready
-    - lastTransitionTime: {{ $startTime }}
-      status: "True"
-      type: ContainersReady
-    - lastTransitionTime: {{ $startTime }}
-      status: "True"
-      type: PodScheduled
-    {{ range .spec.readinessGates }}
-    - lastTransitionTime: {{ $startTime }}
-      status: "True"
-      type: {{ .conditionType }}
-    {{ end }}
-    {{ if .spec.containers }}
-    containerStatuses:
-    {{ range .spec.containers }}
-    - image: {{ .image }}
-      name: {{ .name }}
-      ready: true
-      restartCount: 0
-      state:
-        running:
-          startedAt: {{ $startTime }}
-    {{ end }}
-    {{ end }}
-    {{ if .spec.initContainers }}
-    initContainerStatuses:
-    {{ range .spec.initContainers }}
-    - image: {{ .image }}
-      name: {{ .name }}
-      ready: true
-      restartCount: 0
-      state:
-        terminated:
-          exitCode: 0
-          finishedAt: {{ $startTime }}
-          reason: Completed
-          startedAt: {{ $startTime }}
-    {{ end }}
-    {{ end }}
-    phase: Running
-    startTime: {{ $startTime }}
-    hostIP: {{ if .status.hostIP }} {{ .status.hostIP }} {{ else }} {{ NodeIP }} {{ end }}
-    podIP: {{ if .status.podIP }} {{ .status.podIP }} {{ else }} {{ PodIP }} {{ end }}
-  node_heartbeat_template: |-
-    conditions:
-    - lastHeartbeatTime: {{ Now }}
-      lastTransitionTime: {{ StartTime }}
-      message: kubelet is ready.
-      reason: KubeletReady
-      status: "True"
-      type: Ready
-    - lastHeartbeatTime: {{ Now }}
-      lastTransitionTime: {{ StartTime }}
-      message: kubelet has sufficient disk space available
-      reason: KubeletHasSufficientDisk
-      status: "False"
-      type: OutOfDisk
-    - lastHeartbeatTime: {{ Now }}
-      lastTransitionTime: {{ StartTime }}
-      message: kubelet has sufficient memory available
-      reason: KubeletHasSufficientMemory
-      status: "False"
-      type: MemoryPressure
-    - lastHeartbeatTime: {{ Now }}
-      lastTransitionTime: {{ StartTime }}
-      message: kubelet has no disk pressure
-      reason: KubeletHasNoDiskPressure
-      status: "False"
-      type: DiskPressure
-    - lastHeartbeatTime: {{ Now }}
-      lastTransitionTime: {{ StartTime }}
-      message: RouteController created a route
-      reason: RouteCreated
-      status: "False"
-      type: NetworkUnavailable
-  node_initialization_template: |-
-    addresses:
-    - address: {{ NodeIP }}
-      type: InternalIP
-    allocatable:
-      cpu: 1k
-      memory: 1Ti
-      pods: 1M
-    capacity:
-      cpu: 1k
-      memory: 1Ti
-      pods: 1M
-    daemonEndpoints:
-      kubeletEndpoint:
-        Port: 0
-    nodeInfo:
-      architecture: amd64
-      bootID: ""
-      containerRuntimeVersion: ""
-      kernelVersion: ""
-      kubeProxyVersion: ""
-      kubeletVersion: fake
-      machineID: ""
-      operatingSystem: Linux
-      osImage: ""
-      systemUUID: ""
-    phase: Running
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: fake-kubelet
-  namespace: kube-system
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: fake-kubelet
-  template:
-    metadata:
-      name: fake-kubelet
-      namespace: kube-system
-      labels:
-        app: fake-kubelet
-    spec:
-      containers:
-        - name: fake-kubelet
-          image: wzshiming/fake-kubelet:latest
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: NODE_NAME
-              value: fake
-            - name: CIDR
-              value: 10.0.0.1/24
-            - name: HEALTH_ADDRESS
-              value: :8080
-            - name: NODE_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-            - name: POD_STATUS_TEMPLATE
-              valueFrom:
-                configMapKeyRef:
-                  name: fake-kubelet
-                  key: pod_status_template
-            - name: NODE_HEARTBEAT_TEMPLATE
-              valueFrom:
-                configMapKeyRef:
-                  name: fake-kubelet
-                  key: node_heartbeat_template
-            - name: NODE_INITIALIZATION_TEMPLATE
-              valueFrom:
-                configMapKeyRef:
-                  name: fake-kubelet
-                  key: node_initialization_template
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-              scheme: HTTP
-            initialDelaySeconds: 2
-            timeoutSeconds: 2
-            periodSeconds: 10
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-              scheme: HTTP
-            initialDelaySeconds: 2
-            timeoutSeconds: 2
-            periodSeconds: 10
-            failureThreshold: 3
-      serviceAccount: fake-kubelet
-      serviceAccountName: fake-kubelet
-      restartPolicy: Always
----
+#apiVersion: v1
+#kind: ConfigMap
+#metadata:
+#  name: fake-kubelet
+#  namespace: kube-system
+#  labels:
+#    app: fake-kubelet
+#data:
+#  pod_status_template: |-
+#    {{ $startTime := .metadata.creationTimestamp }}
+#    conditions:
+#    - lastTransitionTime: {{ $startTime }}
+#      status: "True"
+#      type: Initialized
+#    - lastTransitionTime: {{ $startTime }}
+#      status: "True"
+#      type: Ready
+#    - lastTransitionTime: {{ $startTime }}
+#      status: "True"
+#      type: ContainersReady
+#    - lastTransitionTime: {{ $startTime }}
+#      status: "True"
+#      type: PodScheduled
+#    {{ range .spec.readinessGates }}
+#    - lastTransitionTime: {{ $startTime }}
+#      status: "True"
+#      type: {{ .conditionType }}
+#    {{ end }}
+#    {{ if .spec.containers }}
+#    containerStatuses:
+#    {{ range .spec.containers }}
+#    - image: {{ .image }}
+#      name: {{ .name }}
+#      ready: true
+#      restartCount: 0
+#      state:
+#        running:
+#          startedAt: {{ $startTime }}
+#    {{ end }}
+#    {{ end }}
+#    {{ if .spec.initContainers }}
+#    initContainerStatuses:
+#    {{ range .spec.initContainers }}
+#    - image: {{ .image }}
+#      name: {{ .name }}
+#      ready: true
+#      restartCount: 0
+#      state:
+#        terminated:
+#          exitCode: 0
+#          finishedAt: {{ $startTime }}
+#          reason: Completed
+#          startedAt: {{ $startTime }}
+#    {{ end }}
+#    {{ end }}
+#    phase: Running
+#    startTime: {{ $startTime }}
+#    hostIP: {{ if .status.hostIP }} {{ .status.hostIP }} {{ else }} {{ NodeIP }} {{ end }}
+#    podIP: {{ if .status.podIP }} {{ .status.podIP }} {{ else }} {{ PodIP }} {{ end }}
+#  node_heartbeat_template: |-
+#    conditions:
+#    - lastHeartbeatTime: {{ Now }}
+#      lastTransitionTime: {{ StartTime }}
+#      message: kubelet is ready.
+#      reason: KubeletReady
+#      status: "True"
+#      type: Ready
+#    - lastHeartbeatTime: {{ Now }}
+#      lastTransitionTime: {{ StartTime }}
+#      message: kubelet has sufficient disk space available
+#      reason: KubeletHasSufficientDisk
+#      status: "False"
+#      type: OutOfDisk
+#    - lastHeartbeatTime: {{ Now }}
+#      lastTransitionTime: {{ StartTime }}
+#      message: kubelet has sufficient memory available
+#      reason: KubeletHasSufficientMemory
+#      status: "False"
+#      type: MemoryPressure
+#    - lastHeartbeatTime: {{ Now }}
+#      lastTransitionTime: {{ StartTime }}
+#      message: kubelet has no disk pressure
+#      reason: KubeletHasNoDiskPressure
+#      status: "False"
+#      type: DiskPressure
+#    - lastHeartbeatTime: {{ Now }}
+#      lastTransitionTime: {{ StartTime }}
+#      message: RouteController created a route
+#      reason: RouteCreated
+#      status: "False"
+#      type: NetworkUnavailable
+#  node_initialization_template: |-
+#    addresses:
+#    - address: {{ NodeIP }}
+#      type: InternalIP
+#    allocatable:
+#      cpu: 1k
+#      memory: 1Ti
+#      pods: 1M
+#    capacity:
+#      cpu: 1k
+#      memory: 1Ti
+#      pods: 1M
+#    daemonEndpoints:
+#      kubeletEndpoint:
+#        Port: 0
+#    nodeInfo:
+#      architecture: amd64
+#      bootID: ""
+#      containerRuntimeVersion: ""
+#      kernelVersion: ""
+#      kubeProxyVersion: ""
+#      kubeletVersion: fake
+#      machineID: ""
+#      operatingSystem: Linux
+#      osImage: ""
+#      systemUUID: ""
+#    phase: Running
+#---
+#apiVersion: apps/v1
+#kind: Deployment
+#metadata:
+#  name: fake-kubelet
+#  namespace: kube-system
+#spec:
+#  replicas: 1
+#  selector:
+#    matchLabels:
+#      app: fake-kubelet
+#  template:
+#    metadata:
+#      name: fake-kubelet
+#      namespace: kube-system
+#      labels:
+#        app: fake-kubelet
+#    spec:
+#      containers:
+#        - name: fake-kubelet
+#          image: wzshiming/fake-kubelet:latest
+#          imagePullPolicy: IfNotPresent
+#          env:
+#            - name: NODE_NAME
+#              value: fake
+#            - name: CIDR
+#              value: 10.0.0.1/24
+#            - name: HEALTH_ADDRESS
+#              value: :8080
+#            - name: NODE_IP
+#              valueFrom:
+#                fieldRef:
+#                  fieldPath: status.podIP
+#            - name: POD_STATUS_TEMPLATE
+#              valueFrom:
+#                configMapKeyRef:
+#                  name: fake-kubelet
+#                  key: pod_status_template
+#            - name: NODE_HEARTBEAT_TEMPLATE
+#              valueFrom:
+#                configMapKeyRef:
+#                  name: fake-kubelet
+#                  key: node_heartbeat_template
+#            - name: NODE_INITIALIZATION_TEMPLATE
+#              valueFrom:
+#                configMapKeyRef:
+#                  name: fake-kubelet
+#                  key: node_initialization_template
+#          livenessProbe:
+#            httpGet:
+#              path: /health
+#              port: 8080
+#              scheme: HTTP
+#            initialDelaySeconds: 2
+#            timeoutSeconds: 2
+#            periodSeconds: 10
+#            failureThreshold: 3
+#          readinessProbe:
+#            httpGet:
+#              path: /health
+#              port: 8080
+#              scheme: HTTP
+#            initialDelaySeconds: 2
+#            timeoutSeconds: 2
+#            periodSeconds: 10
+#            failureThreshold: 3
+#      serviceAccount: fake-kubelet
+#      serviceAccountName: fake-kubelet
+#      restartPolicy: Always
+#---

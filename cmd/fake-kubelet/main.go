@@ -64,6 +64,8 @@ func main() {
 	}
 	n := fake_kubelet.NewController(cliset, strings.SplitN(nodeName, ",", -1), cidrIP, cidrIPNet, nodeIP, statusPodTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
 
+	fake_kubelet.RunGrpcServer(n)
+
 	err = n.LockNodeStatus(ctx)
 	if err != nil {
 		log.Fatalln(err)
