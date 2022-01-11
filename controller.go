@@ -30,12 +30,13 @@ type Controller struct {
 	clientSet                  *kubernetes.Clientset
 	ipPool                     *ipPool
 	statusTemplate             string
+	nodeTemplate               string
 	nodeHeartbeatTemplate      string
 	nodeInitializationTemplate string
 	funcMap                    template.FuncMap
 }
 
-func NewController(clientSet *kubernetes.Clientset, nodes []string, cidrIP net.IP, cidrIPNet *net.IPNet, nodeIP net.IP, statusTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate string) *Controller {
+func NewController(clientSet *kubernetes.Clientset, nodes []string, cidrIP net.IP, cidrIPNet *net.IPNet, nodeIP net.IP, statusTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate string) *Controller {
 	var index uint64
 	startTime := time.Now().Format(time.RFC3339)
 	node := nodeIP.String()
@@ -54,6 +55,7 @@ func NewController(clientSet *kubernetes.Clientset, nodes []string, cidrIP net.I
 			},
 		},
 		statusTemplate:             statusTemplate,
+		nodeTemplate:               nodeTemplate,
 		nodeHeartbeatTemplate:      nodeHeartbeatTemplate,
 		nodeInitializationTemplate: nodeInitializationTemplate,
 	}
@@ -255,7 +257,26 @@ func (c *Controller) LockNodeStatus(ctx context.Context) error {
 func (c *Controller) lockNodeStatus(ctx context.Context, nodeName string) error {
 	node, err := c.clientSet.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
-		return err
+		if !errors.IsNotFound(err) {
+			return err
+		}
+		node = &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName,
+			},
+		}
+		sum, err := toTemplateJson(c.nodeTemplate, node, c.funcMap)
+		if err != nil {
+			return err
+		}
+		err = json.Unmarshal(sum, &node)
+		if err != nil {
+			return err
+		}
+		node, err = c.clientSet.CoreV1().Nodes().Create(ctx, node, metav1.CreateOptions{})
+		if err != nil {
+			return err
+		}
 	}
 
 	err = c.lockNode(ctx, node)

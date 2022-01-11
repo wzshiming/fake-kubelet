@@ -25,6 +25,7 @@ var (
 	kubeconfig                 = getEnv("KUBECONFIG", "")
 	healthAddress              = getEnv("HEALTH_ADDRESS", "")
 	statusPodTemplate          = getEnv("POD_STATUS_TEMPLATE", defaultPodStatusTemplate)
+	nodeTemplate               = getEnv("NODE_TEMPLATE", defaultNodeTemplate)
 	nodeHeartbeatTemplate      = getEnv("NODE_HEARTBEAT_TEMPLATE", defaultNodeHeartbeatTemplate)
 	nodeInitializationTemplate = getEnv("NODE_INITIALIZATION_TEMPLATE", defaultNodeInitializationTemplate)
 	master                     = ""
@@ -63,7 +64,7 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	n := fake_kubelet.NewController(cliset, strings.SplitN(nodeName, ",", -1), cidrIP, cidrIPNet, nodeIP, statusPodTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
+	n := fake_kubelet.NewController(cliset, strings.SplitN(nodeName, ",", -1), cidrIP, cidrIPNet, nodeIP, statusPodTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
 
 	err = n.LockNodeStatus(ctx)
 	if err != nil {
@@ -133,6 +134,9 @@ func getEnv(name string, defaults string) string {
 var (
 	//go:embed pod.status.tpl
 	defaultPodStatusTemplate string
+
+	//go:embed node.tpl
+	defaultNodeTemplate string
 
 	//go:embed node.heartbeat.tpl
 	defaultNodeHeartbeatTemplate string

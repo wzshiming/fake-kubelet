@@ -19,6 +19,7 @@ rules:
     resources:
       - nodes
     verbs:
+      - create
       - get
   - apiGroups:
       - ""
@@ -59,24 +60,6 @@ subjects:
   - kind: ServiceAccount
     name: fake-kubelet
     namespace: kube-system
----
-apiVersion: v1
-kind: Node
-metadata:
-  annotations:
-    node.alpha.kubernetes.io/ttl: "0"
-  labels:
-    kubernetes.io/hostname: fake
-    kubernetes.io/os: linux
-    kubernetes.io/role: agent
-    type: virtual-kubelet
-    app: fake-kubelet
-  name: fake
-spec:
-  taints:
-    - effect: NoSchedule
-      key: virtual-kubelet.io/provider
-      value: fake
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -137,6 +120,28 @@ data:
     startTime: {{ $startTime }}
     hostIP: {{ if .status.hostIP }} {{ .status.hostIP }} {{ else }} {{ NodeIP }} {{ end }}
     podIP: {{ if .status.podIP }} {{ .status.podIP }} {{ else }} {{ PodIP }} {{ end }}
+  node_template: |-
+    apiVersion: v1
+    kind: Node
+    metadata:
+      annotations:
+        node.alpha.kubernetes.io/ttl: "0"
+      labels:
+        app: fake-kubelet
+        beta.kubernetes.io/arch: amd64
+        beta.kubernetes.io/os: linux
+        kubernetes.io/arch: amd64
+        kubernetes.io/hostname: {{ .metadata.name }}
+        kubernetes.io/os: linux
+        kubernetes.io/role: agent
+        node-role.kubernetes.io/agent: ""
+        type: fake-kubelet
+      name: {{ .metadata.name }}
+    spec:
+      taints:
+        - effect: NoSchedule
+          key: fake-kubelet/provider
+          value: fake
   node_heartbeat_template: |-
     conditions:
     - lastHeartbeatTime: {{ Now }}
@@ -234,6 +239,11 @@ spec:
                 configMapKeyRef:
                   name: fake-kubelet
                   key: pod_status_template
+            - name: NODE_TEMPLATE
+              valueFrom:
+                configMapKeyRef:
+                  name: fake-kubelet
+                  key: node_template
             - name: NODE_HEARTBEAT_TEMPLATE
               valueFrom:
                 configMapKeyRef:
