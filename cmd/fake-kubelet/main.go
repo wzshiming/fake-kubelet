@@ -68,7 +68,12 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	nodes := strings.SplitN(nodeName, ",", -1)
+	var nodes []string
+	for _, n := range strings.SplitN(nodeName, ",", -1) {
+		if n != "" {
+			nodes = append(nodes, n)
+		}
+	}
 	if generateNodeName != "" {
 		u, err := strconv.ParseUint(generateReplicas, 10, 64)
 		if err == nil {
@@ -77,6 +82,7 @@ func main() {
 			}
 		}
 	}
+
 	n := fake_kubelet.NewController(cliset, nodes, cidrIP, cidrIPNet, nodeIP, statusPodTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
 
 	err = n.LockNodeStatus(ctx)
@@ -84,7 +90,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	log.Printf("Watch fake nodes %q", nodeName)
+	log.Printf("Watch fake nodes %q", nodes)
 
 	err = n.LockPodStatus(ctx)
 	if err != nil {
