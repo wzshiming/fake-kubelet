@@ -221,11 +221,11 @@ spec:
     spec:
       containers:
         - name: fake-kubelet
-          image: ghcr.io/wzshiming/fake-kubelet/fake-kubelet:v0.3.2
+          image: ghcr.io/wzshiming/fake-kubelet/fake-kubelet:v0.3.3
           imagePullPolicy: IfNotPresent
           env:
             - name: NODE_NAME
-              value: fake
+              value: "" # This is to specify a single Node, use GENERATE_NODE_NAME and GENERATE_REPLICAS to generate multiple nodes
             - name: GENERATE_NODE_NAME
               value: fake-
             - name: GENERATE_REPLICAS

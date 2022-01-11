@@ -15,7 +15,18 @@ Deploy fake kubelet.
 kubectl apply -f https://raw.githubusercontent.com/wzshiming/fake-kubelet/master/deploy.yaml
 ```
 
-`kubectl get node` You will find a 'fake' node.
+`kubectl get node` You will find a fake node.
+
+
+``` console
+> kubectl get node -o wide
+NAME         STATUS   ROLES   AGE   VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE    KERNEL-VERSION   CONTAINER-RUNTIME
+fake-0       Ready    agent   10s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
+fake-1       Ready    agent   10s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
+fake-2       Ready    agent   10s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
+fake-3       Ready    agent   10s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
+fake-4       Ready    agent   10s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
+```
 
 Deploy app.
 ``` yaml
@@ -34,13 +45,41 @@ spec:
       labels:
         app: fake-pod
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: type
+                    operator: In
+                    values:
+                      - fake-kubelet
+      tolerations: # A taints was added to an automatically created Node. You can remove taints of Node or add this tolerations
+        - key: "fake-kubelet/provider"
+          operator: "Exists"
+          effect: "NoSchedule"
+      # nodeName: fake-0 # Or direct scheduling to a fake node
       containers:
         - name: fake-pod
           image: fake
-      nodeName: fake # Direct scheduling to 'fake' node
 ```
 
 `kubectl get pod` You will find that it has been started, although the image does not exist.
+
+``` console
+> kubectl get pod -o wide
+NAME                        READY   STATUS    RESTARTS   AGE   IP          NODE     NOMINATED NODE   READINESS GATES
+fake-pod-78884479b7-52qcx   1/1     Running   0          6s    10.0.0.23   fake-4   <none>           <none>
+fake-pod-78884479b7-bd6nk   1/1     Running   0          6s    10.0.0.13   fake-2   <none>           <none>
+fake-pod-78884479b7-dqjtn   1/1     Running   0          6s    10.0.0.15   fake-2   <none>           <none>
+fake-pod-78884479b7-h2fv6   1/1     Running   0          6s    10.0.0.31   fake-0   <none>           <none>
+fake-pod-78884479b7-hc9kd   1/1     Running   0          6s    10.0.0.29   fake-4   <none>           <none>
+fake-pod-78884479b7-m4rb8   1/1     Running   0          6s    10.0.0.19   fake-1   <none>           <none>
+fake-pod-78884479b7-p9zmn   1/1     Running   0          6s    10.0.0.27   fake-0   <none>           <none>
+fake-pod-78884479b7-pmgmf   1/1     Running   0          6s    10.0.0.21   fake-0   <none>           <none>
+fake-pod-78884479b7-rzbs2   1/1     Running   0          6s    10.0.0.17   fake-0   <none>           <none>
+fake-pod-78884479b7-scsjb   1/1     Running   0          6s    10.0.0.25   fake-1   <none>           <none>
+```
 
 ## License
 

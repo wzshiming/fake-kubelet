@@ -13,7 +13,20 @@ spec:
       labels:
         app: fake-pod
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: type
+                    operator: In
+                    values:
+                      - fake-kubelet
+      tolerations: # A taints was added to an automatically created Node. You can remove taints of Node or add this tolerations
+        - key: "fake-kubelet/provider"
+          operator: "Exists"
+          effect: "NoSchedule"
+      # nodeName: fake-0 # Or direct scheduling to a fake node
       containers:
         - name: fake-pod
           image: fake
-      nodeName: fake
