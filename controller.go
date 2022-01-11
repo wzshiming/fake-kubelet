@@ -137,16 +137,6 @@ func (c *Controller) lockPod(ctx context.Context, pod *corev1.Pod) error {
 }
 
 func (c *Controller) LockPodStatus(ctx context.Context) error {
-	for _, node := range c.nodes {
-		err := c.lockPodStatus(ctx, node)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *Controller) lockPodStatus(ctx context.Context, nodeName string) error {
 	lockCh := make(chan *corev1.Pod)
 	go func() {
 		for {
@@ -166,10 +156,20 @@ func (c *Controller) lockPodStatus(ctx context.Context, nodeName string) error {
 		}
 	}()
 
+	for _, node := range c.nodes {
+		err := c.lockPodStatus(ctx, lockCh, node)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) lockPodStatus(ctx context.Context, ch chan<- *corev1.Pod, nodeName string) error {
 	lockPendingOpt := metav1.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector("spec.nodeName", nodeName).String(),
 	}
-	err := c.lockPodStatusWithNode(ctx, lockCh, lockPendingOpt)
+	err := c.lockPodStatusWithNode(ctx, ch, lockPendingOpt)
 	if err != nil {
 		return err
 	}
@@ -245,48 +245,20 @@ func (c *Controller) heartbeatNode(ctx context.Context, node *corev1.Node) error
 }
 
 func (c *Controller) LockNodeStatus(ctx context.Context) error {
+	nodes := make([]*corev1.Node, 0, len(c.nodes))
 	for _, node := range c.nodes {
-		err := c.lockNodeStatus(ctx, node)
+		n, err := c.lockNodeStatus(ctx, node)
 		if err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-func (c *Controller) lockNodeStatus(ctx context.Context, nodeName string) error {
-	node, err := c.clientSet.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return err
-		}
-		node = &corev1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: nodeName,
-			},
-		}
-		sum, err := toTemplateJson(c.nodeTemplate, node, c.funcMap)
-		if err != nil {
-			return err
-		}
-		err = json.Unmarshal(sum, &node)
-		if err != nil {
-			return err
-		}
-		node, err = c.clientSet.CoreV1().Nodes().Create(ctx, node, metav1.CreateOptions{})
-		if err != nil {
-			return err
-		}
+		nodes = append(nodes, n)
 	}
 
-	err = c.lockNode(ctx, node)
-	if err != nil {
-		return err
-	}
-
-	err = c.heartbeatNode(ctx, node)
-	if err != nil {
-		return err
+	for _, node := range nodes {
+		err := c.heartbeatNode(ctx, node)
+		if err != nil {
+			return err
+		}
 	}
 
 	heartbeatInterval := 30 * time.Second
@@ -296,10 +268,13 @@ func (c *Controller) lockNodeStatus(ctx context.Context, nodeName string) error 
 			select {
 			case <-th.C:
 				th.Reset(heartbeatInterval)
-				err = c.heartbeatNode(ctx, node)
-				if err != nil {
-					log.Printf("Error update heartbeat %s", err)
+				for _, node := range nodes {
+					err := c.heartbeatNode(ctx, node)
+					if err != nil {
+						log.Printf("Error update heartbeat %s", err)
+					}
 				}
+
 			case <-ctx.Done():
 				log.Printf("Stop locking nodes %s status", c.nodes)
 				return
@@ -307,6 +282,38 @@ func (c *Controller) lockNodeStatus(ctx context.Context, nodeName string) error 
 		}
 	}()
 	return nil
+}
+
+func (c *Controller) lockNodeStatus(ctx context.Context, nodeName string) (*corev1.Node, error) {
+	node, err := c.clientSet.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return nil, err
+		}
+		node = &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName,
+			},
+		}
+		sum, err := toTemplateJson(c.nodeTemplate, node, c.funcMap)
+		if err != nil {
+			return nil, err
+		}
+		err = json.Unmarshal(sum, &node)
+		if err != nil {
+			return nil, err
+		}
+		node, err = c.clientSet.CoreV1().Nodes().Create(ctx, node, metav1.CreateOptions{})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err = c.lockNode(ctx, node)
+	if err != nil {
+		return nil, err
+	}
+	return node, nil
 }
 
 func (c *Controller) configurePod(pod *corev1.Pod) (bool, error) {
