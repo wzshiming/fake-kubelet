@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"log"
 	"net"
 	"net/http"
@@ -130,119 +131,12 @@ func getEnv(name string, defaults string) string {
 }
 
 var (
-	defaultPodStatusTemplate = `
-{{ $startTime := .metadata.creationTimestamp }}
-conditions:
-- lastTransitionTime: {{ $startTime }}
-  status: "True"
-  type: Initialized
-- lastTransitionTime: {{ $startTime }}
-  status: "True"
-  type: Ready
-- lastTransitionTime: {{ $startTime }}
-  status: "True"
-  type: ContainersReady
-- lastTransitionTime: {{ $startTime }}
-  status: "True"
-  type: PodScheduled
-{{ range .spec.readinessGates }}
-- lastTransitionTime: {{ $startTime }}
-  status: "True"
-  type: {{ .conditionType }}
-{{ end }}
-{{ if .spec.containers }}
-containerStatuses:
-{{ range .spec.containers }}
-- image: {{ .image }}
-  name: {{ .name }}
-  ready: true
-  restartCount: 0
-  state:
-    running:
-      startedAt: {{ $startTime }}
-{{ end }}
-{{ end }}
-{{ if .spec.initContainers }}
-initContainerStatuses:
-{{ range .spec.initContainers }}
-- image: {{ .image }}
-  name: {{ .name }}
-  ready: true
-  restartCount: 0
-  state:
-    terminated:
-      exitCode: 0
-      finishedAt: {{ $startTime }}
-      reason: Completed
-      startedAt: {{ $startTime }}
-{{ end }}
-{{ end }}
-phase: Running
-startTime: {{ $startTime }}
-hostIP: {{ if .status.hostIP }} {{ .status.hostIP }} {{ else }} {{ NodeIP }} {{ end }}
-podIP: {{ if .status.podIP }} {{ .status.podIP }} {{ else }} {{ PodIP }} {{ end }}
-`
+	//go:embed pod.status.tpl
+	defaultPodStatusTemplate string
 
-	defaultNodeHeartbeatTemplate = `
-conditions:
-- lastHeartbeatTime: {{ Now }}
-  lastTransitionTime: {{ StartTime }}
-  message: kubelet is ready.
-  reason: KubeletReady
-  status: "True"
-  type: Ready
-- lastHeartbeatTime: {{ Now }}
-  lastTransitionTime: {{ StartTime }}
-  message: kubelet has sufficient disk space available
-  reason: KubeletHasSufficientDisk
-  status: "False"
-  type: OutOfDisk
-- lastHeartbeatTime: {{ Now }}
-  lastTransitionTime: {{ StartTime }}
-  message: kubelet has sufficient memory available
-  reason: KubeletHasSufficientMemory
-  status: "False"
-  type: MemoryPressure
-- lastHeartbeatTime: {{ Now }}
-  lastTransitionTime: {{ StartTime }}
-  message: kubelet has no disk pressure
-  reason: KubeletHasNoDiskPressure
-  status: "False"
-  type: DiskPressure
-- lastHeartbeatTime: {{ Now }}
-  lastTransitionTime: {{ StartTime }}
-  message: RouteController created a route
-  reason: RouteCreated
-  status: "False"
-  type: NetworkUnavailable
-`
+	//go:embed node.heartbeat.tpl
+	defaultNodeHeartbeatTemplate string
 
-	defaultNodeInitializationTemplate = `
-addresses:
-- address: {{ NodeIP }}
-  type: InternalIP
-allocatable:
-  cpu: 1k
-  memory: 1Ti
-  pods: 1M
-capacity:
-  cpu: 1k
-  memory: 1Ti
-  pods: 1M
-daemonEndpoints:
-  kubeletEndpoint:
-    Port: 0
-nodeInfo:
-  architecture: amd64
-  bootID: ""
-  containerRuntimeVersion: ""
-  kernelVersion: ""
-  kubeProxyVersion: ""
-  kubeletVersion: fake
-  machineID: ""
-  operatingSystem: Linux
-  osImage: ""
-  systemUUID: ""
-phase: Running
-`
+	//go:embed node.initialization.tpl
+	defaultNodeInitializationTemplate string
 )
