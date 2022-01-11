@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/pflag"
@@ -22,6 +23,8 @@ var (
 	cidr                       = getEnv("CIDR", "10.0.0.1/24")
 	nodeIP                     = net.ParseIP(getEnv("NODE_IP", "196.168.0.1"))
 	nodeName                   = getEnv("NODE_NAME", "fake")
+	generateNodeName           = getEnv("GENERATE_NODE_NAME", "")
+	generateReplicas           = getEnv("GENERATE_REPLICAS", "0")
 	kubeconfig                 = getEnv("KUBECONFIG", "")
 	healthAddress              = getEnv("HEALTH_ADDRESS", "")
 	statusPodTemplate          = getEnv("POD_STATUS_TEMPLATE", defaultPodStatusTemplate)
@@ -64,7 +67,17 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	n := fake_kubelet.NewController(cliset, strings.SplitN(nodeName, ",", -1), cidrIP, cidrIPNet, nodeIP, statusPodTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
+
+	nodes := strings.SplitN(nodeName, ",", -1)
+	if generateNodeName != "" {
+		u, err := strconv.ParseUint(generateReplicas, 10, 64)
+		if err == nil {
+			for i := 0; i != int(u); i++ {
+				nodes = append(nodes, generateNodeName+strconv.Itoa(i))
+			}
+		}
+	}
+	n := fake_kubelet.NewController(cliset, nodes, cidrIP, cidrIPNet, nodeIP, statusPodTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
 
 	err = n.LockNodeStatus(ctx)
 	if err != nil {

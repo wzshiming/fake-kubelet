@@ -226,6 +226,10 @@ spec:
           env:
             - name: NODE_NAME
               value: fake
+            - name: GENERATE_NODE_NAME
+              value: fake-
+            - name: GENERATE_REPLICAS
+              value: "5"
             - name: CIDR
               value: 10.0.0.1/24
             - name: HEALTH_ADDRESS
