@@ -7,6 +7,15 @@
 
 This is a fake kubelet. The pod on this node will always be in the ready state, but no process will be started.
 
+## What's the difference with [Kubemark](https://github.com/kubernetes/kubernetes/tree/master/test/kubemark)
+
+Kubemark is directly implemented with the code of kubelet, replacing the runtime part, 
+except that it does not actually start the container, other behaviors are exactly the same as kubelet,
+mainly used for Kubernetes own e2e test, simulating a large number of nodes and pods will occupy the same memory as the real scene.
+
+fake-kubelet that only does the minimum work of maintaining nodes and pods, 
+and is very suitable for simulating a large number of nodes and pods for pressure testing on the control plane.
+
 ## Usage
 
 Deploy fake kubelet.
