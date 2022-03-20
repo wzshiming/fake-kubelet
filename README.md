@@ -7,6 +7,16 @@
 
 This is a fake kubelet. The pod on this node will always be in the ready state, but no process will be started.
 
+## What's the difference with [Kind](https://github.com/kubernetes-sigs/kind)
+
+Kind is run Kubernetes in Docker that is a real cluster.
+
+fake-kubelet is simulation a node of Kubernetes.
+
+There is a [fake-k8s](https://github.com/wzshiming/fake-k8s) here, that can start a cluster using the fake-kubelet simulation node using docker-compose.
+
+It can be used as an alternative to Kind in some scenarios where you don’t need to actually run the Pod.
+
 ## What's the difference with [Kubemark](https://github.com/kubernetes/kubernetes/tree/master/test/kubemark)
 
 Kubemark is directly implemented with the code of kubelet, replacing the runtime part, 
