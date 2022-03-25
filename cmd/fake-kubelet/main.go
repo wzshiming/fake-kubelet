@@ -83,16 +83,11 @@ func main() {
 		}
 	}
 
-	n := fake_kubelet.NewController(cliset, nodes, cidrIP, cidrIPNet, nodeIP, statusPodTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
-
-	err = n.LockNodeStatus(ctx)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
 	log.Printf("Watch fake nodes %q", nodes)
 
-	err = n.LockPodStatus(ctx)
+	n := fake_kubelet.NewController(cliset, nodes, cidrIP, cidrIPNet, nodeIP, statusPodTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
+
+	err = n.Start(ctx)
 	if err != nil {
 		log.Fatalln(err)
 	}

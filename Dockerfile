@@ -1,4 +1,5 @@
 FROM golang:alpine AS builder
+RUN apk add -U git
 WORKDIR /go/src/github.com/wzshiming/fake-kubelet
 COPY . .
 ENV CGO_ENABLED=0
