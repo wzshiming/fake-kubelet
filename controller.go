@@ -345,7 +345,7 @@ func (c *Controller) LockNodeStatus(ctx context.Context) error {
 			c.nodePoolMut.Lock()
 			c.nodePool[localNode] = struct{}{}
 			c.nodePoolMut.Unlock()
-			err = c.heartbeatNode(ctx, node)
+			err = c.heartbeatNode(ctx, localNode)
 			if err != nil {
 				log.Printf("Error update heartbeat %s", err)
 			}
