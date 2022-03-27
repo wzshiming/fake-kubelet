@@ -102,4 +102,4 @@ fake-pod-78884479b7-scsjb   1/1     Running   0          6s    10.0.0.25   fake-
 
 ## License
 
-Pouch is licensed under the MIT License. See [LICENSE](https://github.com/wzshiming/fake-kubelet/blob/master/LICENSE) for the full license text.
+Licensed under the MIT License. See [LICENSE](https://github.com/wzshiming/fake-kubelet/blob/master/LICENSE) for the full license text.
