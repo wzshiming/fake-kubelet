@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"sync"
@@ -39,10 +38,15 @@ type Controller struct {
 	nodeHeartbeatTemplate      string
 	nodeInitializationTemplate string
 	funcMap                    template.FuncMap
+	logger                     Logger
+}
+
+type Logger interface {
+	Printf(format string, v ...interface{})
 }
 
 // NewController creates a new fake kubelet controller
-func NewController(clientSet *kubernetes.Clientset, nodes []string, cidrIP net.IP, cidrIPNet *net.IPNet, nodeIP net.IP, statusTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate string) *Controller {
+func NewController(clientSet *kubernetes.Clientset, nodes []string, cidrIP net.IP, cidrIPNet *net.IPNet, nodeIP net.IP, logger Logger, statusTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate string) *Controller {
 	var index uint64
 	startTime := time.Now().Format(time.RFC3339)
 	node := nodeIP.String()
@@ -61,6 +65,7 @@ func NewController(clientSet *kubernetes.Clientset, nodes []string, cidrIP net.I
 				return addIp(cidrIP, index).String()
 			},
 		},
+		logger:                     logger,
 		statusTemplate:             statusTemplate,
 		nodeTemplate:               nodeTemplate,
 		nodeHeartbeatTemplate:      nodeHeartbeatTemplate,
@@ -120,7 +125,9 @@ func (c *Controller) lockPod(ctx context.Context, pod *corev1.Pod) error {
 		if err != nil {
 			return err
 		}
-		log.Printf("Delete pod %s.%s on %s", pod.Name, pod.Namespace, pod.Spec.NodeName)
+		if c.logger != nil {
+			c.logger.Printf("Delete pod %s.%s on %s", pod.Name, pod.Namespace, pod.Spec.NodeName)
+		}
 		return nil
 	}
 
@@ -129,7 +136,9 @@ func (c *Controller) lockPod(ctx context.Context, pod *corev1.Pod) error {
 		return err
 	}
 	if !ok {
-		log.Printf("Skip pod %s.%s on %s", pod.Name, pod.Namespace, pod.Spec.NodeName)
+		if c.logger != nil {
+			c.logger.Printf("Skip pod %s.%s on %s", pod.Name, pod.Namespace, pod.Spec.NodeName)
+		}
 		return nil
 	}
 	pod.ResourceVersion = "0"
@@ -140,7 +149,9 @@ func (c *Controller) lockPod(ctx context.Context, pod *corev1.Pod) error {
 		}
 		return err
 	}
-	log.Printf("Lock pod %s.%s on %s", pod.Name, pod.Namespace, pod.Spec.NodeName)
+	if c.logger != nil {
+		c.logger.Printf("Lock pod %s.%s on %s", pod.Name, pod.Namespace, pod.Spec.NodeName)
+	}
 	return nil
 }
 
@@ -160,7 +171,9 @@ func (c *Controller) LockPodStatus(ctx context.Context) error {
 				tasks.Add(func() {
 					err := c.lockPod(ctx, localPod)
 					if err != nil {
-						log.Printf("Error lock pod %s", err)
+						if c.logger != nil {
+							c.logger.Printf("Failed to lock pod %s.%s on %s: %s", localPod.Name, localPod.Namespace, localPod.Spec.NodeName, err)
+						}
 					}
 				})
 			case <-ctx.Done():
@@ -192,7 +205,9 @@ func (c *Controller) LockPodStatus(ctx context.Context) error {
 							continue loop
 						}
 
-						log.Printf("Error watch pod: %s", err)
+						if c.logger != nil {
+							c.logger.Printf("Failed to watch pods: %s", err)
+						}
 						select {
 						case <-ctx.Done():
 							break loop
@@ -219,7 +234,9 @@ func (c *Controller) LockPodStatus(ctx context.Context) error {
 				break loop
 			}
 		}
-		log.Printf("Stop locking pod status")
+		if c.logger != nil {
+			c.logger.Printf("Stop locking pod status")
+		}
 	}()
 
 	return nil
@@ -257,7 +274,9 @@ func (c *Controller) allHeartbeatNode(ctx context.Context) {
 		tasks.Add(func() {
 			err := c.heartbeatNode(ctx, localNode)
 			if err != nil {
-				log.Printf("Error update heartbeat %s", err)
+				if c.logger != nil {
+					c.logger.Printf("Failed to heartbeat node %s: %s", localNode, err)
+				}
 			}
 		})
 	}
@@ -302,7 +321,9 @@ func (c *Controller) LockAllPodStatusOnce(ctx context.Context) error {
 			}
 			err := c.lockPod(ctx, &pod)
 			if err != nil {
-				log.Printf("Error lock pod %s", err)
+				if c.logger != nil {
+					c.logger.Printf("Failed to lock pod %s.%s on %s: %s", pod.Name, pod.Namespace, pod.Spec.NodeName, err)
+				}
 			}
 		}
 		if list.Continue == "" {
@@ -324,7 +345,9 @@ func (c *Controller) LockNodeStatus(ctx context.Context) error {
 				th.Reset(heartbeatInterval)
 				c.allHeartbeatNode(ctx)
 			case <-ctx.Done():
-				log.Printf("Stop locking nodes %s status", c.nodes)
+				if c.logger != nil {
+					c.logger.Printf("Stop locking nodes %s status", c.nodes)
+				}
 				return
 			}
 		}
@@ -339,7 +362,9 @@ func (c *Controller) LockNodeStatus(ctx context.Context) error {
 		tasks.Add(func() {
 			_, err := c.lockNodeStatus(ctx, localNode)
 			if err != nil {
-				log.Printf("Error lock node status %s", err)
+				if c.logger != nil {
+					c.logger.Printf("Failed to lock node %s status: %s", localNode, err)
+				}
 				return
 			}
 			c.nodePoolMut.Lock()
@@ -347,7 +372,9 @@ func (c *Controller) LockNodeStatus(ctx context.Context) error {
 			c.nodePoolMut.Unlock()
 			err = c.heartbeatNode(ctx, localNode)
 			if err != nil {
-				log.Printf("Error update heartbeat %s", err)
+				if c.logger != nil {
+					c.logger.Printf("Failed to heartbeat node %s: %s", localNode, err)
+				}
 			}
 		})
 	}
@@ -384,7 +411,9 @@ func (c *Controller) lockNodeStatus(ctx context.Context, nodeName string) (*core
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("Lock node %s", node.Name)
+	if c.logger != nil {
+		c.logger.Printf("Lock node %s status", nodeName)
+	}
 	return node, nil
 }
 

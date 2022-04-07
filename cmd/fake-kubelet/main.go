@@ -35,6 +35,8 @@ var (
 
 	cidrIPNet *net.IPNet
 	cidrIP    net.IP
+
+	logger = log.New(os.Stderr, "[fake-kubelet] ", log.LstdFlags)
 )
 
 func init() {
@@ -47,7 +49,7 @@ func init() {
 	ip, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {
 		pflag.PrintDefaults()
-		log.Fatal(err)
+		logger.Fatalln(err)
 	}
 	cidrIPNet = ipnet
 	cidrIP = ip
@@ -65,7 +67,7 @@ func main() {
 	}
 	cliset, err := newClientset(master, kubeconfig)
 	if err != nil {
-		log.Fatalln(err)
+		logger.Fatalln(err)
 	}
 
 	var nodes []string
@@ -83,13 +85,14 @@ func main() {
 		}
 	}
 
-	log.Printf("Watch fake nodes %q", nodes)
+	logger.Printf("Watch fake nodes %q", nodes)
 
-	n := fake_kubelet.NewController(cliset, nodes, cidrIP, cidrIPNet, nodeIP, statusPodTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
+	n := fake_kubelet.NewController(cliset, nodes, cidrIP, cidrIPNet, nodeIP, logger,
+		statusPodTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
 
 	err = n.Start(ctx)
 	if err != nil {
-		log.Fatalln(err)
+		logger.Fatalln(err)
 	}
 
 	if healthAddress != "" {
@@ -116,7 +119,7 @@ func healthServe(address string, ctx context.Context) {
 
 	err := svc.ListenAndServe()
 	if err != nil {
-		log.Fatal("Fatal start health server")
+		logger.Fatal("Fatal start health server")
 	}
 }
 
