@@ -34,9 +34,6 @@ var (
 	nodeInitializationTemplate = getEnv("NODE_INITIALIZATION_TEMPLATE", defaultNodeInitializationTemplate)
 	master                     = ""
 
-	cidrIPNet *net.IPNet
-	cidrIP    net.IP
-
 	logger = log.New(os.Stderr, "[fake-kubelet] ", log.LstdFlags)
 )
 
@@ -48,13 +45,6 @@ func init() {
 	pflag.StringVar(&kubeconfig, "kubeconfig", kubeconfig, "kubeconfig")
 	pflag.StringVar(&master, "master", master, "master")
 	pflag.Parse()
-	ip, ipnet, err := net.ParseCIDR(cidr)
-	if err != nil {
-		pflag.PrintDefaults()
-		logger.Fatalln(err)
-	}
-	cidrIPNet = ipnet
-	cidrIP = ip
 }
 
 func main() {
@@ -93,8 +83,11 @@ func main() {
 		logger.Printf("Watch fake node %q", nodeName)
 	}
 
-	n := fake_kubelet.NewController(cliset, nodes, takeOverAll, cidrIP, cidrIPNet, nodeIP, logger,
+	n, err := fake_kubelet.NewController(cliset, nodes, takeOverAll, cidr, nodeIP.String(), logger,
 		statusPodTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
+	if err != nil {
+		logger.Fatalln(err)
+	}
 
 	err = n.Start(ctx)
 	if err != nil {
