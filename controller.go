@@ -28,6 +28,7 @@ type Controller struct {
 	cidrIP                     net.IP
 	cidrIPNet                  *net.IPNet
 	nodeIP                     net.IP
+	takeOverAll                bool // if true, take over all nodes
 	nodes                      []string
 	nodePoolMut                sync.RWMutex
 	nodePool                   map[string]struct{}
@@ -46,17 +47,18 @@ type Logger interface {
 }
 
 // NewController creates a new fake kubelet controller
-func NewController(clientSet *kubernetes.Clientset, nodes []string, cidrIP net.IP, cidrIPNet *net.IPNet, nodeIP net.IP, logger Logger, statusTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate string) *Controller {
+func NewController(clientSet *kubernetes.Clientset, nodes []string, takeOverAll bool, cidrIP net.IP, cidrIPNet *net.IPNet, nodeIP net.IP, logger Logger, statusTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate string) *Controller {
 	var index uint64
 	startTime := time.Now().Format(time.RFC3339)
 	node := nodeIP.String()
 	n := &Controller{
-		clientSet: clientSet,
-		nodes:     nodes,
-		cidrIP:    cidrIP,
-		cidrIPNet: cidrIPNet,
-		nodeIP:    nodeIP,
-		nodePool:  map[string]struct{}{},
+		clientSet:   clientSet,
+		nodes:       nodes,
+		takeOverAll: takeOverAll,
+		cidrIP:      cidrIP,
+		cidrIPNet:   cidrIPNet,
+		nodeIP:      nodeIP,
+		nodePool:    map[string]struct{}{},
 		ipPool: &ipPool{
 			usable: map[string]struct{}{},
 			used:   map[string]struct{}{},
@@ -290,6 +292,13 @@ func (c *Controller) hasNode(node string) bool {
 	return ok
 }
 
+func (c *Controller) deleteNode(node string) {
+	c.nodePoolMut.Lock()
+	delete(c.nodePool, node)
+	c.nodePoolMut.Unlock()
+	return
+}
+
 func (c *Controller) Start(ctx context.Context) error {
 	err := c.LockPodStatus(ctx)
 	if err != nil {
@@ -353,8 +362,72 @@ func (c *Controller) LockNodeStatus(ctx context.Context) error {
 		}
 	}()
 
-	tasks := newParallelTasks(16)
+	ch := make(chan string)
+	go c.lockNodes(ctx, ch)
 	for _, node := range c.nodes {
+		ch <- node
+	}
+
+	if !c.takeOverAll {
+		close(ch)
+		return nil
+	}
+
+	// Take over all nodes in the cluster
+	opt := metav1.ListOptions{}
+	watcher, err := c.clientSet.CoreV1().Nodes().Watch(ctx, opt)
+	if err != nil {
+		return err
+	}
+	go func() {
+		rc := watcher.ResultChan()
+	loop:
+		for {
+			select {
+			case event, ok := <-rc:
+				if !ok {
+					for {
+						watcher, err := c.clientSet.CoreV1().Nodes().Watch(ctx, opt)
+						if err == nil {
+							rc = watcher.ResultChan()
+							continue loop
+						}
+
+						if c.logger != nil {
+							c.logger.Printf("Failed to watch nodes: %s", err)
+						}
+						select {
+						case <-ctx.Done():
+							break loop
+						case <-time.After(time.Second * 5):
+						}
+					}
+				}
+				switch event.Type {
+				case watch.Added:
+					node := event.Object.(*corev1.Node)
+					if !c.hasNode(node.Name) {
+						ch <- node.Name
+					}
+				case watch.Deleted:
+					node := event.Object.(*corev1.Node)
+					c.deleteNode(node.Name)
+				}
+			case <-ctx.Done():
+				watcher.Stop()
+				break loop
+			}
+		}
+		if c.logger != nil {
+			c.logger.Printf("Stop locking node status")
+		}
+	}()
+	return nil
+}
+
+func (c *Controller) lockNodes(ctx context.Context, nodes <-chan string) {
+	tasks := newParallelTasks(16)
+	for node := range nodes {
 		if node == "" {
 			continue
 		}
@@ -379,7 +452,7 @@ func (c *Controller) LockNodeStatus(ctx context.Context) error {
 		})
 	}
 	tasks.Wait()
-	return nil
+	return
 }
 
 func (c *Controller) lockNodeStatus(ctx context.Context, nodeName string) (*corev1.Node, error) {
