@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/yaml"
 )
 
 const mergeLabel = "fake/status"
@@ -82,6 +83,13 @@ func NewController(clientSet *kubernetes.Clientset,
 		},
 		"PodIP": func() string {
 			return n.ipPool.Get()
+		},
+		"YAML": func(s interface{}) (string, error) {
+			d, err := yaml.Marshal(s)
+			if err != nil {
+				return "", err
+			}
+			return string(d), nil
 		},
 	}
 	return n, nil
