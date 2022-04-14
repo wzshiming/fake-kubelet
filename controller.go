@@ -25,9 +25,8 @@ const mergeLabel = "fake/status"
 
 // Controller is a fake kubelet implementation that can be used to test
 type Controller struct {
-	cidrIP                     net.IP
 	cidrIPNet                  *net.IPNet
-	nodeIP                     net.IP
+	nodeIP                     string
 	takeOverAll                bool // if true, take over all nodes
 	nodes                      []string
 	nodePoolMut                sync.RWMutex
@@ -47,26 +46,24 @@ type Logger interface {
 }
 
 // NewController creates a new fake kubelet controller
-func NewController(clientSet *kubernetes.Clientset, nodes []string, takeOverAll bool, cidrIP net.IP, cidrIPNet *net.IPNet, nodeIP net.IP, logger Logger, statusTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate string) *Controller {
-	var index uint64
+func NewController(clientSet *kubernetes.Clientset,
+	nodes []string, takeOverAll bool,
+	cidr string, nodeIP string,
+	logger Logger,
+	statusTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate string) (*Controller, error) {
 	startTime := time.Now().Format(time.RFC3339)
-	node := nodeIP.String()
+	cidrIPNet, err := parseCIDR(cidr)
+	if err != nil {
+		return nil, err
+	}
 	n := &Controller{
-		clientSet:   clientSet,
-		nodes:       nodes,
-		takeOverAll: takeOverAll,
-		cidrIP:      cidrIP,
-		cidrIPNet:   cidrIPNet,
-		nodeIP:      nodeIP,
-		nodePool:    map[string]struct{}{},
-		ipPool: &ipPool{
-			usable: map[string]struct{}{},
-			used:   map[string]struct{}{},
-			New: func() string {
-				index++
-				return addIp(cidrIP, index).String()
-			},
-		},
+		clientSet:                  clientSet,
+		nodes:                      nodes,
+		takeOverAll:                takeOverAll,
+		cidrIPNet:                  cidrIPNet,
+		nodeIP:                     nodeIP,
+		nodePool:                   map[string]struct{}{},
+		ipPool:                     newIPPool(cidrIPNet),
 		logger:                     logger,
 		statusTemplate:             statusTemplate,
 		nodeTemplate:               nodeTemplate,
@@ -81,14 +78,13 @@ func NewController(clientSet *kubernetes.Clientset, nodes []string, takeOverAll 
 			return startTime
 		},
 		"NodeIP": func() string {
-			return node
+			return nodeIP
 		},
 		"PodIP": func() string {
 			return n.ipPool.Get()
 		},
 	}
-
-	return n
+	return n, nil
 }
 
 var (
@@ -555,5 +551,5 @@ func (c *Controller) configureHeartbeatNode(node *corev1.Node) ([]byte, error) {
 }
 
 func (c *Controller) NodeIP() string {
-	return c.nodeIP.String()
+	return c.nodeIP
 }

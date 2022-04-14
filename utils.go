@@ -14,6 +14,15 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+func parseCIDR(s string) (*net.IPNet, error) {
+	ip, ipnet, err := net.ParseCIDR(s)
+	if err != nil {
+		return nil, err
+	}
+	ipnet.IP = ip
+	return ipnet, nil
+}
+
 func addIp(ip net.IP, add uint64) net.IP {
 	if len(ip) < 8 {
 		return ip
@@ -31,9 +40,33 @@ func addIp(ip net.IP, add uint64) net.IP {
 
 type ipPool struct {
 	mut    sync.Mutex
-	New    func() string
 	used   map[string]struct{}
 	usable map[string]struct{}
+	cidr   *net.IPNet
+	index  uint64
+}
+
+func newIPPool(cidr *net.IPNet) *ipPool {
+	return &ipPool{
+		used:   make(map[string]struct{}),
+		usable: make(map[string]struct{}),
+		cidr:   cidr,
+	}
+}
+
+func (i *ipPool) new() string {
+	for {
+		ip := addIp(i.cidr.IP, i.index).String()
+		i.index++
+
+		if _, ok := i.used[ip]; ok {
+			continue
+		}
+
+		i.used[ip] = struct{}{}
+		i.usable[ip] = struct{}{}
+		return ip
+	}
 }
 
 func (i *ipPool) Get() string {
@@ -45,17 +78,20 @@ func (i *ipPool) Get() string {
 			ip = s
 		}
 	}
-	if ip == "" && i.New != nil {
-		ip = i.New()
+	if ip == "" {
+		ip = i.new()
 	}
 	delete(i.usable, ip)
 	i.used[ip] = struct{}{}
-	return i.New()
+	return ip
 }
 
 func (i *ipPool) Put(ip string) {
 	i.mut.Lock()
 	defer i.mut.Unlock()
+	if !i.cidr.Contains(net.ParseIP(ip)) {
+		return
+	}
 	delete(i.used, ip)
 	i.usable[ip] = struct{}{}
 }
@@ -63,6 +99,9 @@ func (i *ipPool) Put(ip string) {
 func (i *ipPool) Use(ip string) {
 	i.mut.Lock()
 	defer i.mut.Unlock()
+	if !i.cidr.Contains(net.ParseIP(ip)) {
+		return
+	}
 	i.used[ip] = struct{}{}
 }
 
