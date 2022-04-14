@@ -83,8 +83,18 @@ func main() {
 		logger.Printf("Watch fake node %q", nodeName)
 	}
 
-	n, err := fake_kubelet.NewController(cliset, nodes, takeOverAll, cidr, nodeIP.String(), logger,
-		statusPodTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
+	n, err := fake_kubelet.NewController(fake_kubelet.Config{
+		ClientSet:                  cliset,
+		Nodes:                      nodes,
+		TakeOverAll:                takeOverAll,
+		CIDR:                       cidr,
+		NodeIP:                     nodeIP.String(),
+		Logger:                     logger,
+		StatusTemplate:             statusPodTemplate,
+		NodeTemplate:               nodeTemplate,
+		NodeHeartbeatTemplate:      nodeHeartbeatTemplate,
+		NodeInitializationTemplate: nodeInitializationTemplate,
+	})
 	if err != nil {
 		logger.Fatalln(err)
 	}
