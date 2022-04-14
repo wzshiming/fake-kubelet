@@ -22,7 +22,12 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-const mergeLabel = "fake/status"
+var (
+	mergeLabel       = "fake/status"
+	removeFinalizers = []byte(`{"metadata":{"finalizers":null}}`)
+	deleteOpt        = *metav1.NewDeleteOptions(0)
+	podFieldSelector = fields.OneTermNotEqualSelector("spec.nodeName", "").String()
+)
 
 // Controller is a fake kubelet implementation that can be used to test
 type Controller struct {
@@ -42,34 +47,43 @@ type Controller struct {
 	logger                     Logger
 }
 
+type Config struct {
+	ClientSet                  *kubernetes.Clientset
+	Nodes                      []string
+	TakeOverAll                bool
+	CIDR                       string
+	NodeIP                     string
+	Logger                     Logger
+	StatusTemplate             string
+	NodeTemplate               string
+	NodeHeartbeatTemplate      string
+	NodeInitializationTemplate string
+}
+
 type Logger interface {
 	Printf(format string, v ...interface{})
 }
 
 // NewController creates a new fake kubelet controller
-func NewController(clientSet *kubernetes.Clientset,
-	nodes []string, takeOverAll bool,
-	cidr string, nodeIP string,
-	logger Logger,
-	statusTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate string) (*Controller, error) {
+func NewController(conf Config) (*Controller, error) {
 	startTime := time.Now().Format(time.RFC3339)
-	cidrIPNet, err := parseCIDR(cidr)
+	cidrIPNet, err := parseCIDR(conf.CIDR)
 	if err != nil {
 		return nil, err
 	}
 	n := &Controller{
-		clientSet:                  clientSet,
-		nodes:                      nodes,
-		takeOverAll:                takeOverAll,
+		clientSet:                  conf.ClientSet,
+		nodes:                      conf.Nodes,
+		takeOverAll:                conf.TakeOverAll,
 		cidrIPNet:                  cidrIPNet,
-		nodeIP:                     nodeIP,
+		nodeIP:                     conf.NodeIP,
 		nodePool:                   map[string]struct{}{},
 		ipPool:                     newIPPool(cidrIPNet),
-		logger:                     logger,
-		statusTemplate:             statusTemplate,
-		nodeTemplate:               nodeTemplate,
-		nodeHeartbeatTemplate:      nodeHeartbeatTemplate,
-		nodeInitializationTemplate: nodeInitializationTemplate,
+		logger:                     conf.Logger,
+		statusTemplate:             conf.StatusTemplate,
+		nodeTemplate:               conf.NodeTemplate,
+		nodeHeartbeatTemplate:      conf.NodeHeartbeatTemplate,
+		nodeInitializationTemplate: conf.NodeInitializationTemplate,
 	}
 	n.funcMap = template.FuncMap{
 		"Now": func() string {
@@ -79,7 +93,7 @@ func NewController(clientSet *kubernetes.Clientset,
 			return startTime
 		},
 		"NodeIP": func() string {
-			return nodeIP
+			return n.nodeIP
 		},
 		"PodIP": func() string {
 			return n.ipPool.Get()
@@ -94,12 +108,6 @@ func NewController(clientSet *kubernetes.Clientset,
 	}
 	return n, nil
 }
-
-var (
-	removeFinalizers = []byte(`{"metadata":{"finalizers":null}}`)
-	deleteOpt        = *metav1.NewDeleteOptions(0)
-	podFieldSelector = fields.OneTermNotEqualSelector("spec.nodeName", "").String()
-)
 
 func (c *Controller) deletePod(ctx context.Context, pod *corev1.Pod) error {
 	if len(pod.Finalizers) != 0 {
