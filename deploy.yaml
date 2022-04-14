@@ -177,42 +177,76 @@ data:
       status: "False"
       type: NetworkUnavailable
   node_initialization_template: |-
-    {{ if not .status.addresses }}
+    {{ with .status }}
+    {{ with .addresses }}
+    {{ . | YAML }}
+    {{ else }}
     addresses:
     - address: {{ NodeIP }}
       type: InternalIP
     {{ end }}
-    {{ if not .status.allocatable }}
+    {{ with .allocatable }}
+    {{ . | YAML }}
+    {{ else }}
     allocatable:
       cpu: 1k
       memory: 1Ti
       pods: 1M
     {{ end }}
-    {{ if not .status.capacity }}
+    {{ with .capacity }}
+    {{ . | YAML }}
+    {{ else }}
     capacity:
       cpu: 1k
       memory: 1Ti
       pods: 1M
     {{ end }}
-    {{ if not .status.daemonEndpoints }}
+    {{ with .daemonEndpoints }}
+    {{ . | YAML }}
+    {{ else }}
     daemonEndpoints:
       kubeletEndpoint:
         Port: 0
     {{ end }}
-    {{ if not .status.nodeInfo }}
     nodeInfo:
+    {{ with .nodeInfo.architecture }}
+      architecture: {{ . }}
+    {{ else }}
       architecture: amd64
-      bootID: ""
-      containerRuntimeVersion: ""
-      kernelVersion: ""
-      kubeProxyVersion: ""
+    {{ end }}
+    {{ with .nodeInfo.bootID }}
+      bootID: {{ . }}
+    {{ end }}
+    {{ with .nodeInfo.containerRuntimeVersion }}
+      containerRuntimeVersion: {{ . }}
+    {{ end }}
+    {{ with .nodeInfo.kernelVersion }}
+      kernelVersion: {{ . }}
+    {{ end }}
+    {{ with .nodeInfo.kubeProxyVersion }}
+      kubeProxyVersion: {{ . }}
+    {{ end }}
+    {{ with .nodeInfo.kubeletVersion }}
+      kubeletVersion: {{ . }}
+    {{ else }}
       kubeletVersion: fake
-      machineID: ""
+    {{ end }}
+    {{ with .nodeInfo.machineID }}
+      machineID: {{ . }}
+    {{ end }}
+    {{ with .nodeInfo.operatingSystem }}
+      operatingSystem: {{ . }}
+    {{ else }}
       operatingSystem: Linux
-      osImage: ""
-      systemUUID: ""
+    {{ end }}
+    {{ with .nodeInfo.osImage }}
+      osImage: {{ . }}
+    {{ end }}
+    {{ with .nodeInfo.systemUUID }}
+      systemUUID: {{ . }}
     {{ end }}
     phase: Running
+    {{ end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
