@@ -19,6 +19,8 @@ rules:
     resources:
       - nodes
     verbs:
+      - watch
+      - list
       - create
       - get
   - apiGroups:

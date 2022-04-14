@@ -23,6 +23,7 @@ var (
 	cidr                       = getEnv("CIDR", "10.0.0.1/24")
 	nodeIP                     = net.ParseIP(getEnv("NODE_IP", "196.168.0.1"))
 	nodeName                   = getEnv("NODE_NAME", "fake")
+	takeOverAll                = getEnvBool("TAKE_OVER_ALL", false)
 	generateNodeName           = getEnv("GENERATE_NODE_NAME", "")
 	generateReplicas           = getEnv("GENERATE_REPLICAS", "0")
 	kubeconfig                 = getEnv("KUBECONFIG", "")
@@ -43,6 +44,7 @@ func init() {
 	pflag.StringVar(&cidr, "cidr", cidr, "cidr")
 	pflag.IPVar(&nodeIP, "node_ip", nodeIP, "node ip")
 	pflag.StringVarP(&nodeName, "node_name", "n", nodeName, "node name")
+	pflag.BoolVar(&takeOverAll, "take_over_all", takeOverAll, "take over all node")
 	pflag.StringVar(&kubeconfig, "kubeconfig", kubeconfig, "kubeconfig")
 	pflag.StringVar(&master, "master", master, "master")
 	pflag.Parse()
@@ -85,9 +87,13 @@ func main() {
 		}
 	}
 
-	logger.Printf("Watch fake nodes %q", nodes)
+	if takeOverAll {
+		logger.Printf("Watch all nodes")
+	} else {
+		logger.Printf("Watch fake node %q", nodeName)
+	}
 
-	n := fake_kubelet.NewController(cliset, nodes, cidrIP, cidrIPNet, nodeIP, logger,
+	n := fake_kubelet.NewController(cliset, nodes, takeOverAll, cidrIP, cidrIPNet, nodeIP, logger,
 		statusPodTemplate, nodeTemplate, nodeHeartbeatTemplate, nodeInitializationTemplate)
 
 	err = n.Start(ctx)
@@ -144,6 +150,17 @@ func getEnv(name string, defaults string) string {
 	val, ok := os.LookupEnv(name)
 	if ok {
 		return val
+	}
+	return defaults
+}
+
+func getEnvBool(name string, defaults bool) bool {
+	val, ok := os.LookupEnv(name)
+	if ok {
+		boolean, err := strconv.ParseBool(val)
+		if err == nil {
+			return boolean
+		}
 	}
 	return defaults
 }
