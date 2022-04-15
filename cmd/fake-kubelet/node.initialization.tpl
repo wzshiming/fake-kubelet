@@ -1,31 +1,31 @@
 {{ with .status }}
+addresses:
 {{ with .addresses }}
 {{ . | YAML }}
 {{ else }}
-addresses:
 - address: {{ NodeIP }}
   type: InternalIP
 {{ end }}
+allocatable:
 {{ with .allocatable }}
 {{ . | YAML }}
 {{ else }}
-allocatable:
   cpu: 1k
   memory: 1Ti
   pods: 1M
 {{ end }}
+capacity:
 {{ with .capacity }}
 {{ . | YAML }}
 {{ else }}
-capacity:
   cpu: 1k
   memory: 1Ti
   pods: 1M
 {{ end }}
+daemonEndpoints:
 {{ with .daemonEndpoints }}
 {{ . | YAML }}
 {{ else }}
-daemonEndpoints:
   kubeletEndpoint:
     Port: 0
 {{ end }}
