@@ -98,12 +98,17 @@ func NewController(conf Config) (*Controller, error) {
 		"PodIP": func() string {
 			return n.ipPool.Get()
 		},
-		"YAML": func(s interface{}) (string, error) {
+		"YAML": func(s interface{}, indent ...int) (string, error) {
 			d, err := yaml.Marshal(s)
 			if err != nil {
 				return "", err
 			}
-			return string(d), nil
+
+			data := string(d)
+			if len(indent) == 1 && indent[0] > 0 {
+				data = strings.Replace("\n"+data, "\n", "\n"+strings.Repeat("  ", indent[0]), -1)
+			}
+			return data, nil
 		},
 	}
 	return n, nil
