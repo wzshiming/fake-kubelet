@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
-	_ "embed"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/pflag"
 	fake_kubelet "github.com/wzshiming/fake-kubelet"
+	"github.com/wzshiming/fake-kubelet/templates"
 	"github.com/wzshiming/notify"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -28,10 +29,10 @@ var (
 	generateReplicas           = getEnv("GENERATE_REPLICAS", "0")
 	kubeconfig                 = getEnv("KUBECONFIG", "")
 	healthAddress              = getEnv("HEALTH_ADDRESS", "")
-	statusPodTemplate          = getEnv("POD_STATUS_TEMPLATE", defaultPodStatusTemplate)
-	nodeTemplate               = getEnv("NODE_TEMPLATE", defaultNodeTemplate)
-	nodeHeartbeatTemplate      = getEnv("NODE_HEARTBEAT_TEMPLATE", defaultNodeHeartbeatTemplate)
-	nodeInitializationTemplate = getEnv("NODE_INITIALIZATION_TEMPLATE", defaultNodeInitializationTemplate)
+	podStatusTemplate          = getEnv("POD_STATUS_TEMPLATE", templates.DefaultPodStatusTemplate)
+	nodeTemplate               = getEnv("NODE_TEMPLATE", templates.DefaultNodeTemplate)
+	nodeHeartbeatTemplate      = getEnv("NODE_HEARTBEAT_TEMPLATE", templates.DefaultNodeHeartbeatTemplate)
+	nodeInitializationTemplate = getEnv("NODE_INITIALIZATION_TEMPLATE", templates.DefaultNodeInitializationTemplate)
 	master                     = ""
 
 	logger = log.New(os.Stderr, "[fake-kubelet] ", log.LstdFlags)
@@ -48,8 +49,9 @@ func init() {
 }
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
-	notify.Once(os.Interrupt, cancel)
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	notify.OnceSlice([]os.Signal{syscall.SIGINT, syscall.SIGTERM}, cancel)
 
 	if kubeconfig != "" {
 		f, err := os.Stat(kubeconfig)
@@ -57,7 +59,7 @@ func main() {
 			kubeconfig = ""
 		}
 	}
-	cliset, err := newClientset(master, kubeconfig)
+	clientset, err := newClientset(master, kubeconfig)
 	if err != nil {
 		logger.Fatalln(err)
 	}
@@ -84,13 +86,13 @@ func main() {
 	}
 
 	n, err := fake_kubelet.NewController(fake_kubelet.Config{
-		ClientSet:                  cliset,
+		ClientSet:                  clientset,
 		Nodes:                      nodes,
 		TakeOverAll:                takeOverAll,
 		CIDR:                       cidr,
 		NodeIP:                     nodeIP.String(),
 		Logger:                     logger,
-		StatusTemplate:             statusPodTemplate,
+		PodStatusTemplate:          podStatusTemplate,
 		NodeTemplate:               nodeTemplate,
 		NodeHeartbeatTemplate:      nodeHeartbeatTemplate,
 		NodeInitializationTemplate: nodeInitializationTemplate,
@@ -132,7 +134,7 @@ func healthServe(address string, ctx context.Context) {
 	}
 }
 
-func newClientset(master, kubeconfig string) (*kubernetes.Clientset, error) {
+func newClientset(master, kubeconfig string) (kubernetes.Interface, error) {
 	cfg, err := clientcmd.BuildConfigFromFlags(master, kubeconfig)
 	if err != nil {
 		return nil, err
@@ -167,17 +169,3 @@ func getEnvBool(name string, defaults bool) bool {
 	}
 	return defaults
 }
-
-var (
-	//go:embed pod.status.tpl
-	defaultPodStatusTemplate string
-
-	//go:embed node.tpl
-	defaultNodeTemplate string
-
-	//go:embed node.heartbeat.tpl
-	defaultNodeHeartbeatTemplate string
-
-	//go:embed node.initialization.tpl
-	defaultNodeInitializationTemplate string
-)
