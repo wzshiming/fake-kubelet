@@ -14,6 +14,21 @@ env:
   IMAGE_FAKE_KUBELET: fake-kubelet:test
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17
+      - name: go mod vendor
+        run: |
+          go mod vendor
+      - name: Test
+        run: |
+          go test -v ./...
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -21,17 +36,18 @@ jobs:
       - name: Build image
         run: |
           docker build -t "${IMAGE_FAKE_KUBELET}" .
-          docker save "${IMAGE_FAKE_KUBELET}" > image.tar
+          docker save "${IMAGE_FAKE_KUBELET}" -o image.tar
       - name: Upload image tar
         uses: actions/upload-artifact@v2
         with:
           name: test
           path: image.tar
 
-  test:
+  e2e-test:
     runs-on: ubuntu-latest
     needs:
       - build
+      - test
     steps:
       - uses: actions/checkout@v2
         with:
@@ -46,10 +62,11 @@ jobs:
       - name: Run test
         run: ./fake-k8s.test.sh
 
-  mock-test:
+  e2e-mock-test:
     runs-on: ubuntu-latest
     needs:
       - build
+      - test
     steps:
       - uses: actions/checkout@v2
         with:
@@ -63,3 +80,22 @@ jobs:
           docker load -i image.tar
       - name: Run mock test
         run: ./fake-k8s.mock.test.sh
+
+  e2e-benchmark-test:
+    runs-on: ubuntu-latest
+    needs:
+      - build
+      - test
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: wzshiming/fake-k8s
+      - name: Download for image tar
+        uses: actions/download-artifact@v2
+        with:
+          name: test
+      - name: Load image tar
+        run: |
+          docker load -i image.tar
+      - name: Run benchmark test
+        run: ./fake-k8s.benchmark.test.sh

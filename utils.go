@@ -139,6 +139,7 @@ func toTemplateJson(text string, original interface{}, funcMap template.FuncMap)
 	if err != nil {
 		return nil, err
 	}
+
 	out, err := yaml.YAMLToJSON(buf.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", err, buf.String())
@@ -199,4 +200,42 @@ func (p *parallelTasks) fork() {
 
 func (p *parallelTasks) Wait() {
 	p.wg.Wait()
+}
+
+type stringSets struct {
+	mut  sync.RWMutex
+	sets map[string]struct{}
+}
+
+func newStringSets() *stringSets {
+	return &stringSets{
+		sets: make(map[string]struct{}),
+	}
+}
+
+func (s *stringSets) Put(key string) {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	s.sets[key] = struct{}{}
+}
+
+func (s *stringSets) Delete(key string) {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	delete(s.sets, key)
+}
+
+func (s *stringSets) Has(key string) bool {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+	_, ok := s.sets[key]
+	return ok
+}
+
+func (s *stringSets) Foreach(f func(string)) {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+	for k := range s.sets {
+		f(k)
+	}
 }
