@@ -56,7 +56,9 @@ func TestNodeController(t *testing.T) {
 		NodeInitializationTemplate: templates.DefaultNodeInitializationTemplate,
 		NodeHeartbeatTemplate:      templates.DefaultNodeHeartbeatTemplate,
 		FuncMap:                    funcMap,
-		HeartbeatInterval:          1 * time.Second,
+		NodeHeartbeatInterval:      1 * time.Second,
+		NodeHeartbeatParallelism:   2,
+		LockNodeParallelism:        2,
 		Logger:                     testingLogger{t},
 	})
 	if err != nil {
