@@ -196,7 +196,7 @@ func (c *PodController) LockPods(ctx context.Context, pods <-chan *corev1.Pod) {
 				}
 			} else {
 				if c.logger != nil {
-					c.logger.Printf("Lock pod %s.%s on %s", pod.Name, pod.Namespace, pod.Spec.NodeName)
+					c.logger.Printf("Lock pod %s.%s on %s", localPod.Name, localPod.Namespace, localPod.Spec.NodeName)
 				}
 			}
 		})
@@ -282,7 +282,7 @@ func (c *PodController) ListPods(ctx context.Context, ch chan<- *corev1.Pod, opt
 	return listPager.EachListItem(ctx, opt, func(obj runtime.Object) error {
 		pod := obj.(*corev1.Pod)
 		if c.nodeHasFunc(pod.Spec.NodeName) {
-			ch <- pod
+			ch <- pod.DeepCopy()
 		}
 		return nil
 	})
