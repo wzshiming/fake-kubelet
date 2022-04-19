@@ -96,14 +96,15 @@ func NewController(conf Config) (*Controller, error) {
 	}
 
 	pods, err := NewPodController(PodControllerConfig{
-		ClientSet:          conf.ClientSet,
-		NodeIP:             conf.NodeIP,
-		CIDR:               conf.CIDR,
-		PodStatusTemplate:  conf.PodStatusTemplate,
-		LockPodParallelism: 16,
-		NodeHasFunc:        nodes.Has, // just handle pods that are on nodes we have
-		Logger:             conf.Logger,
-		FuncMap:            funcMap,
+		ClientSet:            conf.ClientSet,
+		NodeIP:               conf.NodeIP,
+		CIDR:                 conf.CIDR,
+		PodStatusTemplate:    conf.PodStatusTemplate,
+		LockPodParallelism:   16,
+		DeletePodParallelism: 16,
+		NodeHasFunc:          nodes.Has, // just handle pods that are on nodes we have
+		Logger:               conf.Logger,
+		FuncMap:              funcMap,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pods controller: %v", err)

@@ -30,28 +30,31 @@ var (
 
 // PodController is a fake pods implementation that can be used to test
 type PodController struct {
-	clientSet          kubernetes.Interface
-	nodeIP             string
-	cidrIPNet          *net.IPNet
-	nodeHasFunc        func(nodeName string) bool
-	ipPool             *ipPool
-	podStatusTemplate  string
-	logger             Logger
-	lockPodParallelism int
-	funcMap            template.FuncMap
-	podChan            chan *corev1.Pod
+	clientSet            kubernetes.Interface
+	nodeIP               string
+	cidrIPNet            *net.IPNet
+	nodeHasFunc          func(nodeName string) bool
+	ipPool               *ipPool
+	podStatusTemplate    string
+	logger               Logger
+	funcMap              template.FuncMap
+	lockPodChan          chan *corev1.Pod
+	lockPodParallelism   int
+	deletePodChan        chan *corev1.Pod
+	deletePodParallelism int
 }
 
 // PodControllerConfig is the configuration for the PodController
 type PodControllerConfig struct {
-	ClientSet          kubernetes.Interface
-	NodeIP             string
-	CIDR               string
-	NodeHasFunc        func(nodeName string) bool
-	PodStatusTemplate  string
-	Logger             Logger
-	LockPodParallelism int
-	FuncMap            template.FuncMap
+	ClientSet            kubernetes.Interface
+	NodeIP               string
+	CIDR                 string
+	NodeHasFunc          func(nodeName string) bool
+	PodStatusTemplate    string
+	Logger               Logger
+	LockPodParallelism   int
+	DeletePodParallelism int
+	FuncMap              template.FuncMap
 }
 
 // NewPodController creates a new fake pods controller
@@ -61,15 +64,17 @@ func NewPodController(conf PodControllerConfig) (*PodController, error) {
 		return nil, err
 	}
 	n := &PodController{
-		clientSet:          conf.ClientSet,
-		nodeIP:             conf.NodeIP,
-		cidrIPNet:          cidrIPNet,
-		ipPool:             newIPPool(cidrIPNet),
-		nodeHasFunc:        conf.NodeHasFunc,
-		logger:             conf.Logger,
-		podStatusTemplate:  conf.PodStatusTemplate,
-		podChan:            make(chan *corev1.Pod),
-		lockPodParallelism: conf.LockPodParallelism,
+		clientSet:            conf.ClientSet,
+		nodeIP:               conf.NodeIP,
+		cidrIPNet:            cidrIPNet,
+		ipPool:               newIPPool(cidrIPNet),
+		nodeHasFunc:          conf.NodeHasFunc,
+		logger:               conf.Logger,
+		podStatusTemplate:    conf.PodStatusTemplate,
+		lockPodChan:          make(chan *corev1.Pod),
+		lockPodParallelism:   conf.LockPodParallelism,
+		deletePodChan:        make(chan *corev1.Pod),
+		deletePodParallelism: conf.DeletePodParallelism,
 	}
 	n.funcMap = template.FuncMap{
 		"NodeIP": func() string {
@@ -88,17 +93,18 @@ func NewPodController(conf PodControllerConfig) (*PodController, error) {
 // Start starts the fake pod controller
 // It will modify the node status to we want
 func (c *PodController) Start(ctx context.Context) error {
-	go c.LockPods(ctx, c.podChan)
+	go c.LockPods(ctx, c.lockPodChan)
+	go c.DeletePods(ctx, c.deletePodChan)
 
 	opt := metav1.ListOptions{
 		FieldSelector: podFieldSelector,
 	}
-	err := c.WatchPods(ctx, c.podChan, opt)
+	err := c.WatchPods(ctx, c.lockPodChan, c.deletePodChan, opt)
 	if err != nil {
 		return fmt.Errorf("failed watch pods: %w", err)
 	}
 	go func() {
-		err = c.ListPods(ctx, c.podChan, opt)
+		err = c.ListPods(ctx, c.lockPodChan, opt)
 		if err != nil {
 			if c.logger != nil {
 				c.logger.Printf("failed list pods: %s", err)
@@ -108,7 +114,8 @@ func (c *PodController) Start(ctx context.Context) error {
 	return nil
 }
 
-func (c *PodController) deletePod(ctx context.Context, pod *corev1.Pod) error {
+// DeletePod deletes a pod and recycling the PodIP
+func (c *PodController) DeletePod(ctx context.Context, pod *corev1.Pod) error {
 	if len(pod.Finalizers) != 0 {
 		_, err := c.clientSet.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType, removeFinalizers, metav1.PatchOptions{})
 		if err != nil {
@@ -126,25 +133,35 @@ func (c *PodController) deletePod(ctx context.Context, pod *corev1.Pod) error {
 		}
 		return err
 	}
+	if c.cidrIPNet.Contains(net.ParseIP(pod.Status.PodIP)) {
+		c.ipPool.Put(pod.Status.PodIP)
+	}
 	return nil
+}
+
+// DeletePods deletes pods from the channel
+func (c *PodController) DeletePods(ctx context.Context, pods <-chan *corev1.Pod) {
+	tasks := newParallelTasks(c.lockPodParallelism)
+	for pod := range pods {
+		localPod := pod
+		tasks.Add(func() {
+			err := c.DeletePod(ctx, localPod)
+			if err != nil {
+				if c.logger != nil {
+					c.logger.Printf("Failed to delete pod %s.%s on %s: %s", localPod.Name, localPod.Namespace, localPod.Spec.NodeName, err)
+				}
+			} else {
+				if c.logger != nil {
+					c.logger.Printf("Delete pod %s.%s on %s", pod.Name, pod.Namespace, pod.Spec.NodeName)
+				}
+			}
+		})
+	}
+	tasks.Wait()
 }
 
 // LockPod locks a given pod
 func (c *PodController) LockPod(ctx context.Context, pod *corev1.Pod) error {
-	if pod.DeletionTimestamp != nil {
-		if c.cidrIPNet.Contains(net.ParseIP(pod.Status.PodIP)) {
-			c.ipPool.Put(pod.Status.PodIP)
-		}
-		err := c.deletePod(ctx, pod)
-		if err != nil {
-			return err
-		}
-		if c.logger != nil {
-			c.logger.Printf("Delete pod %s.%s on %s", pod.Name, pod.Namespace, pod.Spec.NodeName)
-		}
-		return nil
-	}
-
 	ok, err := c.configurePod(pod)
 	if err != nil {
 		return err
@@ -163,9 +180,6 @@ func (c *PodController) LockPod(ctx context.Context, pod *corev1.Pod) error {
 		}
 		return err
 	}
-	if c.logger != nil {
-		c.logger.Printf("Lock pod %s.%s on %s", pod.Name, pod.Namespace, pod.Spec.NodeName)
-	}
 	return nil
 }
 
@@ -180,6 +194,10 @@ func (c *PodController) LockPods(ctx context.Context, pods <-chan *corev1.Pod) {
 				if c.logger != nil {
 					c.logger.Printf("Failed to lock pod %s.%s on %s: %s", localPod.Name, localPod.Namespace, localPod.Spec.NodeName, err)
 				}
+			} else {
+				if c.logger != nil {
+					c.logger.Printf("Lock pod %s.%s on %s", pod.Name, pod.Namespace, pod.Spec.NodeName)
+				}
 			}
 		})
 	}
@@ -187,7 +205,7 @@ func (c *PodController) LockPods(ctx context.Context, pods <-chan *corev1.Pod) {
 }
 
 // WatchPods watch pods put into the channel
-func (c *PodController) WatchPods(ctx context.Context, ch chan<- *corev1.Pod, opt metav1.ListOptions) error {
+func (c *PodController) WatchPods(ctx context.Context, lockChan, deleteChan chan<- *corev1.Pod, opt metav1.ListOptions) error {
 	watcher, err := c.clientSet.CoreV1().Pods(corev1.NamespaceAll).Watch(ctx, opt)
 	if err != nil {
 		return err
@@ -221,7 +239,7 @@ func (c *PodController) WatchPods(ctx context.Context, ch chan<- *corev1.Pod, op
 				case watch.Added:
 					pod := event.Object.(*corev1.Pod)
 					if c.nodeHasFunc(pod.Spec.NodeName) {
-						ch <- pod.DeepCopy()
+						lockChan <- pod.DeepCopy()
 					} else {
 						if c.logger != nil {
 							c.logger.Printf("Skip pod %s.%s on %s: not take over", pod.Name, pod.Namespace, pod.Spec.NodeName)
@@ -233,7 +251,7 @@ func (c *PodController) WatchPods(ctx context.Context, ch chan<- *corev1.Pod, op
 					// At a Kubelet, we need to delete this pod on the node we take over
 					if pod.DeletionTimestamp != nil {
 						if c.nodeHasFunc(pod.Spec.NodeName) {
-							ch <- pod.DeepCopy()
+							deleteChan <- pod.DeepCopy()
 						} else {
 							if c.logger != nil {
 								c.logger.Printf("Skip pod %s.%s on %s: not take over", pod.Name, pod.Namespace, pod.Spec.NodeName)
@@ -272,7 +290,7 @@ func (c *PodController) ListPods(ctx context.Context, ch chan<- *corev1.Pod, opt
 
 // LockPodsOnNode locks pods on the node
 func (c *PodController) LockPodsOnNode(ctx context.Context, nodeName string) error {
-	return c.ListPods(ctx, c.podChan, metav1.ListOptions{
+	return c.ListPods(ctx, c.lockPodChan, metav1.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector("spec.nodeName", nodeName).String(),
 	})
 }
