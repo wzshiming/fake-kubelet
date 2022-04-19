@@ -162,18 +162,17 @@ func (c *PodController) DeletePods(ctx context.Context, pods <-chan *corev1.Pod)
 
 // LockPod locks a given pod
 func (c *PodController) LockPod(ctx context.Context, pod *corev1.Pod) error {
-	ok, err := c.configurePod(pod)
+	patch, err := c.configurePod(pod)
 	if err != nil {
 		return err
 	}
-	if !ok {
+	if patch == nil {
 		if c.logger != nil {
 			c.logger.Printf("Skip pod %s.%s on %s: do not need to modify", pod.Name, pod.Namespace, pod.Spec.NodeName)
 		}
 		return nil
 	}
-	pod.ResourceVersion = "0"
-	_, err = c.clientSet.CoreV1().Pods(pod.Namespace).UpdateStatus(ctx, pod, metav1.UpdateOptions{})
+	_, err = c.clientSet.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "status")
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
@@ -295,7 +294,7 @@ func (c *PodController) LockPodsOnNode(ctx context.Context, nodeName string) err
 	})
 }
 
-func (c *PodController) configurePod(pod *corev1.Pod) (bool, error) {
+func (c *PodController) configurePod(pod *corev1.Pod) ([]byte, error) {
 
 	// Mark the pod IP that existed before the kubelet was started
 	if c.cidrIPNet.Contains(net.ParseIP(pod.Status.PodIP)) {
@@ -308,33 +307,38 @@ func (c *PodController) configurePod(pod *corev1.Pod) (bool, error) {
 	}
 	patch, err := toTemplateJson(merge, pod, c.funcMap)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
-	original, err := json.Marshal(pod.Status)
-	if err != nil {
-		return false, err
+	// Check whether the pod need to be patch
+	if pod.Status.Phase != corev1.PodPending {
+		original, err := json.Marshal(pod.Status)
+		if err != nil {
+			return nil, err
+		}
+
+		sum, err := strategicpatch.StrategicMergePatch(original, patch, pod.Status)
+		if err != nil {
+			return nil, err
+		}
+
+		podStatus := corev1.PodStatus{}
+		err = json.Unmarshal(sum, &podStatus)
+		if err != nil {
+			return nil, err
+		}
+
+		dist, err := json.Marshal(podStatus)
+		if err != nil {
+			return nil, err
+		}
+
+		if bytes.Equal(original, dist) {
+			return nil, nil
+		}
 	}
 
-	sum, err := strategicpatch.StrategicMergePatch(original, patch, pod.Status)
-	if err != nil {
-		return false, err
-	}
-
-	podStatus := corev1.PodStatus{}
-	err = json.Unmarshal(sum, &podStatus)
-	if err != nil {
-		return false, err
-	}
-
-	dist, err := json.Marshal(podStatus)
-	if err != nil {
-		return false, err
-	}
-
-	if bytes.Equal(original, dist) {
-		return false, nil
-	}
-	pod.Status = podStatus
-	return true, nil
+	return json.Marshal(map[string]json.RawMessage{
+		"status": patch,
+	})
 }
