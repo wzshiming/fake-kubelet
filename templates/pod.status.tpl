@@ -1,4 +1,5 @@
 {{ $startTime := .metadata.creationTimestamp }}
+
 conditions:
 - lastTransitionTime: {{ $startTime }}
   status: "True"
@@ -17,7 +18,7 @@ conditions:
   status: "True"
   type: {{ .conditionType }}
 {{ end }}
-{{ if .spec.containers }}
+
 containerStatuses:
 {{ range .spec.containers }}
 - image: {{ .image }}
@@ -28,8 +29,7 @@ containerStatuses:
     running:
       startedAt: {{ $startTime }}
 {{ end }}
-{{ end }}
-{{ if .spec.initContainers }}
+
 initContainerStatuses:
 {{ range .spec.initContainers }}
 - image: {{ .image }}
@@ -43,8 +43,11 @@ initContainerStatuses:
       reason: Completed
       startedAt: {{ $startTime }}
 {{ end }}
+
+{{ with .status }}
+hostIP: {{ with .hostIP }} {{ . }} {{ else }} {{ NodeIP }} {{ end }}
+podIP: {{ with .podIP }} {{ . }} {{ else }} {{ PodIP }} {{ end }}
 {{ end }}
+
 phase: Running
 startTime: {{ $startTime }}
-hostIP: {{ if .status.hostIP }} {{ .status.hostIP }} {{ else }} {{ NodeIP }} {{ end }}
-podIP: {{ if .status.podIP }} {{ .status.podIP }} {{ else }} {{ PodIP }} {{ end }}

@@ -1,7 +1,7 @@
 conditions:
 - lastHeartbeatTime: {{ Now }}
   lastTransitionTime: {{ StartTime }}
-  message: kubelet is ready.
+  message: kubelet is posting ready status
   reason: KubeletReady
   status: "True"
   type: Ready

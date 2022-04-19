@@ -73,6 +73,7 @@ metadata:
 data:
   pod_status_template: |-
     {{ $startTime := .metadata.creationTimestamp }}
+
     conditions:
     - lastTransitionTime: {{ $startTime }}
       status: "True"
@@ -91,7 +92,7 @@ data:
       status: "True"
       type: {{ .conditionType }}
     {{ end }}
-    {{ if .spec.containers }}
+
     containerStatuses:
     {{ range .spec.containers }}
     - image: {{ .image }}
@@ -102,8 +103,7 @@ data:
         running:
           startedAt: {{ $startTime }}
     {{ end }}
-    {{ end }}
-    {{ if .spec.initContainers }}
+
     initContainerStatuses:
     {{ range .spec.initContainers }}
     - image: {{ .image }}
@@ -117,11 +117,14 @@ data:
           reason: Completed
           startedAt: {{ $startTime }}
     {{ end }}
+
+    {{ with .status }}
+    hostIP: {{ with .hostIP }} {{ . }} {{ else }} {{ NodeIP }} {{ end }}
+    podIP: {{ with .podIP }} {{ . }} {{ else }} {{ PodIP }} {{ end }}
     {{ end }}
+
     phase: Running
     startTime: {{ $startTime }}
-    hostIP: {{ if .status.hostIP }} {{ .status.hostIP }} {{ else }} {{ NodeIP }} {{ end }}
-    podIP: {{ if .status.podIP }} {{ .status.podIP }} {{ else }} {{ PodIP }} {{ end }}
   node_template: |-
     apiVersion: v1
     kind: Node
@@ -148,7 +151,7 @@ data:
     conditions:
     - lastHeartbeatTime: {{ Now }}
       lastTransitionTime: {{ StartTime }}
-      message: kubelet is ready.
+      message: kubelet is posting ready status
       reason: KubeletReady
       status: "True"
       type: Ready
@@ -178,6 +181,7 @@ data:
       type: NetworkUnavailable
   node_initialization_template: |-
     {{ with .status }}
+
     addresses:
     {{ with .addresses }}
     {{ YAML . 1 }}
@@ -185,6 +189,7 @@ data:
     - address: {{ NodeIP }}
       type: InternalIP
     {{ end }}
+
     allocatable:
     {{ with .allocatable }}
     {{ YAML . 1 }}
@@ -193,6 +198,7 @@ data:
       memory: 1Ti
       pods: 1M
     {{ end }}
+
     capacity:
     {{ with .capacity }}
     {{ YAML . 1 }}
@@ -201,51 +207,23 @@ data:
       memory: 1Ti
       pods: 1M
     {{ end }}
-    daemonEndpoints:
-    {{ with .daemonEndpoints }}
-    {{ YAML . 1 }}
-    {{ else }}
-      kubeletEndpoint:
-        Port: 0
-    {{ end }}
+
+    {{ with .nodeInfo }}
     nodeInfo:
-    {{ with .nodeInfo.architecture }}
-      architecture: {{ . }}
-    {{ else }}
-      architecture: amd64
+      architecture: {{ with .architecture }} {{ . }} {{ else }} "amd64" {{ end }}
+      bootID: {{ with .bootID }} {{ . }} {{ else }} "" {{ end }}
+      containerRuntimeVersion: {{ with .containerRuntimeVersion }} {{ . }} {{ else }} "" {{ end }}
+      kernelVersion: {{ with .kernelVersion }} {{ . }} {{ else }} "" {{ end }}
+      kubeProxyVersion: {{ with .kubeProxyVersion }} {{ . }} {{ else }} "fake" {{ end }}
+      kubeletVersion: {{ with .kubeletVersion }} {{ . }} {{ else }} "fake" {{ end }}
+      machineID: {{ with .machineID }} {{ . }} {{ else }} "" {{ end }}
+      operatingSystem: {{ with .operatingSystem }} {{ . }} {{ else }} "linux" {{ end }}
+      osImage: {{ with .osImage }} {{ . }} {{ else }} "" {{ end }}
+      systemUUID: {{ with .osImage }} {{ . }} {{ else }} "" {{ end }}
     {{ end }}
-    {{ with .nodeInfo.bootID }}
-      bootID: {{ . }}
-    {{ end }}
-    {{ with .nodeInfo.containerRuntimeVersion }}
-      containerRuntimeVersion: {{ . }}
-    {{ end }}
-    {{ with .nodeInfo.kernelVersion }}
-      kernelVersion: {{ . }}
-    {{ end }}
-    {{ with .nodeInfo.kubeProxyVersion }}
-      kubeProxyVersion: {{ . }}
-    {{ end }}
-    {{ with .nodeInfo.kubeletVersion }}
-      kubeletVersion: {{ . }}
-    {{ else }}
-      kubeletVersion: fake
-    {{ end }}
-    {{ with .nodeInfo.machineID }}
-      machineID: {{ . }}
-    {{ end }}
-    {{ with .nodeInfo.operatingSystem }}
-      operatingSystem: {{ . }}
-    {{ else }}
-      operatingSystem: Linux
-    {{ end }}
-    {{ with .nodeInfo.osImage }}
-      osImage: {{ . }}
-    {{ end }}
-    {{ with .nodeInfo.systemUUID }}
-      systemUUID: {{ . }}
-    {{ end }}
+
     phase: Running
+
     {{ end }}
 ---
 apiVersion: apps/v1
