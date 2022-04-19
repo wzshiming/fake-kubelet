@@ -19,19 +19,21 @@ import (
 
 // NodeController is a fake nodes implementation that can be used to test
 type NodeController struct {
-	clientSet             kubernetes.Interface
-	nodeIP                string
-	nodeSelectorFunc      func(node *corev1.Node) bool
-	lockPodsOnNodeFunc    func(nodeName string) error
-	nodes                 []string
-	nodesSets             *stringSets
-	nodeTemplate          string
-	nodeHeartbeatTemplate string
-	nodeStatusTemplate    string
-	funcMap               template.FuncMap
-	logger                Logger
-	heartbeatInterval     time.Duration
-	nodeChan              chan string
+	clientSet                kubernetes.Interface
+	nodeIP                   string
+	nodeSelectorFunc         func(node *corev1.Node) bool
+	lockPodsOnNodeFunc       func(nodeName string) error
+	nodes                    []string
+	nodesSets                *stringSets
+	nodeTemplate             string
+	nodeHeartbeatTemplate    string
+	nodeStatusTemplate       string
+	funcMap                  template.FuncMap
+	logger                   Logger
+	nodeHeartbeatInterval    time.Duration
+	nodeHeartbeatParallelism int
+	lockNodeParallelism      int
+	nodeChan                 chan string
 }
 
 // NodeControllerConfig is the configuration for the NodeController
@@ -45,25 +47,29 @@ type NodeControllerConfig struct {
 	NodeInitializationTemplate string
 	NodeHeartbeatTemplate      string
 	Logger                     Logger
-	HeartbeatInterval          time.Duration
+	NodeHeartbeatInterval      time.Duration
+	NodeHeartbeatParallelism   int
+	LockNodeParallelism        int
 	FuncMap                    template.FuncMap
 }
 
 // NewNodeController creates a new fake nodes controller
 func NewNodeController(conf NodeControllerConfig) (*NodeController, error) {
 	n := &NodeController{
-		clientSet:             conf.ClientSet,
-		nodes:                 conf.Nodes,
-		nodeSelectorFunc:      conf.NodeSelectorFunc,
-		lockPodsOnNodeFunc:    conf.LockPodsOnNodeFunc,
-		nodeIP:                conf.NodeIP,
-		nodesSets:             newStringSets(),
-		logger:                conf.Logger,
-		nodeTemplate:          conf.NodeTemplate,
-		nodeHeartbeatTemplate: conf.NodeHeartbeatTemplate,
-		nodeStatusTemplate:    conf.NodeHeartbeatTemplate + "\n" + conf.NodeInitializationTemplate,
-		heartbeatInterval:     conf.HeartbeatInterval,
-		nodeChan:              make(chan string),
+		clientSet:                conf.ClientSet,
+		nodes:                    conf.Nodes,
+		nodeSelectorFunc:         conf.NodeSelectorFunc,
+		lockPodsOnNodeFunc:       conf.LockPodsOnNodeFunc,
+		nodeIP:                   conf.NodeIP,
+		nodesSets:                newStringSets(),
+		logger:                   conf.Logger,
+		nodeTemplate:             conf.NodeTemplate,
+		nodeHeartbeatTemplate:    conf.NodeHeartbeatTemplate,
+		nodeStatusTemplate:       conf.NodeHeartbeatTemplate + "\n" + conf.NodeInitializationTemplate,
+		nodeHeartbeatInterval:    conf.NodeHeartbeatInterval,
+		nodeHeartbeatParallelism: conf.NodeHeartbeatParallelism,
+		lockNodeParallelism:      conf.LockNodeParallelism,
+		nodeChan:                 make(chan string),
 	}
 	n.funcMap = template.FuncMap{
 		"NodeIP": func() string {
@@ -143,8 +149,8 @@ func (c *NodeController) allHeartbeatNode(ctx context.Context, nodes []string, t
 
 // KeepNodeHeartbeat keep node heartbeat
 func (c *NodeController) KeepNodeHeartbeat(ctx context.Context) {
-	th := time.NewTimer(c.heartbeatInterval)
-	tasks := newParallelTasks(16)
+	th := time.NewTimer(c.nodeHeartbeatInterval)
+	tasks := newParallelTasks(c.nodeHeartbeatParallelism)
 	var heartbeatStartTime time.Time
 	var nodes []string
 loop:
@@ -164,7 +170,7 @@ loop:
 			if c.logger != nil {
 				c.logger.Printf("Heartbeat %d nodes took %s", len(nodes), time.Since(heartbeatStartTime))
 			}
-			th.Reset(c.heartbeatInterval)
+			th.Reset(c.nodeHeartbeatInterval)
 		case <-ctx.Done():
 			if c.logger != nil {
 				c.logger.Printf("Stop keep nodes heartbeat")
@@ -258,7 +264,7 @@ func (c *NodeController) ListNodes(ctx context.Context, ch chan<- string, opt me
 // if they don't exist we create them and then take over them
 // if they exist we take over them
 func (c *NodeController) LockNodes(ctx context.Context, nodes <-chan string) {
-	tasks := newParallelTasks(16)
+	tasks := newParallelTasks(c.lockNodeParallelism)
 	for node := range nodes {
 		if node == "" || c.nodesSets.Has(node) {
 			continue

@@ -30,26 +30,28 @@ var (
 
 // PodController is a fake pods implementation that can be used to test
 type PodController struct {
-	clientSet         kubernetes.Interface
-	nodeIP            string
-	cidrIPNet         *net.IPNet
-	nodeHasFunc       func(nodeName string) bool
-	ipPool            *ipPool
-	podStatusTemplate string
-	funcMap           template.FuncMap
-	logger            Logger
-	podChan           chan *corev1.Pod
+	clientSet          kubernetes.Interface
+	nodeIP             string
+	cidrIPNet          *net.IPNet
+	nodeHasFunc        func(nodeName string) bool
+	ipPool             *ipPool
+	podStatusTemplate  string
+	logger             Logger
+	lockPodParallelism int
+	funcMap            template.FuncMap
+	podChan            chan *corev1.Pod
 }
 
 // PodControllerConfig is the configuration for the PodController
 type PodControllerConfig struct {
-	ClientSet         kubernetes.Interface
-	NodeIP            string
-	CIDR              string
-	NodeHasFunc       func(nodeName string) bool
-	PodStatusTemplate string
-	Logger            Logger
-	FuncMap           template.FuncMap
+	ClientSet          kubernetes.Interface
+	NodeIP             string
+	CIDR               string
+	NodeHasFunc        func(nodeName string) bool
+	PodStatusTemplate  string
+	Logger             Logger
+	LockPodParallelism int
+	FuncMap            template.FuncMap
 }
 
 // NewPodController creates a new fake pods controller
@@ -59,14 +61,15 @@ func NewPodController(conf PodControllerConfig) (*PodController, error) {
 		return nil, err
 	}
 	n := &PodController{
-		clientSet:         conf.ClientSet,
-		nodeIP:            conf.NodeIP,
-		cidrIPNet:         cidrIPNet,
-		ipPool:            newIPPool(cidrIPNet),
-		nodeHasFunc:       conf.NodeHasFunc,
-		logger:            conf.Logger,
-		podStatusTemplate: conf.PodStatusTemplate,
-		podChan:           make(chan *corev1.Pod),
+		clientSet:          conf.ClientSet,
+		nodeIP:             conf.NodeIP,
+		cidrIPNet:          cidrIPNet,
+		ipPool:             newIPPool(cidrIPNet),
+		nodeHasFunc:        conf.NodeHasFunc,
+		logger:             conf.Logger,
+		podStatusTemplate:  conf.PodStatusTemplate,
+		podChan:            make(chan *corev1.Pod),
+		lockPodParallelism: conf.LockPodParallelism,
 	}
 	n.funcMap = template.FuncMap{
 		"NodeIP": func() string {
@@ -168,7 +171,7 @@ func (c *PodController) LockPod(ctx context.Context, pod *corev1.Pod) error {
 
 // LockPods locks a pods from the channel
 func (c *PodController) LockPods(ctx context.Context, pods <-chan *corev1.Pod) {
-	tasks := newParallelTasks(16)
+	tasks := newParallelTasks(c.lockPodParallelism)
 	for pod := range pods {
 		localPod := pod
 		tasks.Add(func() {

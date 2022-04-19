@@ -176,8 +176,6 @@ func (p *parallelTasks) Add(fun func()) {
 	case p.bucket <- struct{}{}: // there are free threads
 		go p.fork()
 		p.tasks <- fun
-	default: // no idle threads and no free threads
-		p.tasks <- fun
 	}
 }
 
@@ -191,9 +189,9 @@ func (p *parallelTasks) fork() {
 		case <-timer.C: // idle threads
 			return
 		case fun := <-p.tasks:
-			timer.Reset(time.Second / 2)
 			fun()
 			p.wg.Done()
+			timer.Reset(time.Second / 2)
 		}
 	}
 }

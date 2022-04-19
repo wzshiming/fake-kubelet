@@ -53,13 +53,14 @@ func TestPodController(t *testing.T) {
 		return strings.HasPrefix(nodeName, "node")
 	}
 	pods, err := NewPodController(PodControllerConfig{
-		ClientSet:         clientset,
-		NodeIP:            "10.0.0.1",
-		CIDR:              "10.0.0.1/24",
-		PodStatusTemplate: templates.DefaultPodStatusTemplate,
-		NodeHasFunc:       nodeHasFunc,
-		FuncMap:           funcMap,
-		Logger:            testingLogger{t},
+		ClientSet:          clientset,
+		NodeIP:             "10.0.0.1",
+		CIDR:               "10.0.0.1/24",
+		PodStatusTemplate:  templates.DefaultPodStatusTemplate,
+		NodeHasFunc:        nodeHasFunc,
+		FuncMap:            funcMap,
+		LockPodParallelism: 2,
+		Logger:             testingLogger{t},
 	})
 	if err != nil {
 		t.Fatal(fmt.Errorf("new pods controller error: %v", err))
