@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
 	fake_kubelet "github.com/wzshiming/fake-kubelet"
 	"github.com/wzshiming/fake-kubelet/templates"
@@ -28,7 +29,8 @@ var (
 	generateNodeName           = getEnv("GENERATE_NODE_NAME", "")
 	generateReplicas           = getEnv("GENERATE_REPLICAS", "0")
 	kubeconfig                 = getEnv("KUBECONFIG", "")
-	healthAddress              = getEnv("HEALTH_ADDRESS", "")
+	healthAddress              = getEnv("HEALTH_ADDRESS", "") // deprecated: use serverAddress instead
+	serverAddress              = getEnv("SERVER_ADDRESS", healthAddress)
 	podStatusTemplate          = getEnv("POD_STATUS_TEMPLATE", templates.DefaultPodStatusTemplate)
 	nodeTemplate               = getEnv("NODE_TEMPLATE", templates.DefaultNodeTemplate)
 	nodeHeartbeatTemplate      = getEnv("NODE_HEARTBEAT_TEMPLATE", templates.DefaultNodeHeartbeatTemplate)
@@ -45,6 +47,7 @@ func init() {
 	pflag.BoolVar(&takeOverAll, "take_over_all", takeOverAll, "take over all node")
 	pflag.StringVar(&kubeconfig, "kubeconfig", kubeconfig, "kubeconfig")
 	pflag.StringVar(&master, "master", master, "master")
+	pflag.StringVar(&serverAddress, "server_address", serverAddress, "server address")
 	pflag.Parse()
 }
 
@@ -106,31 +109,35 @@ func main() {
 		logger.Fatalln(err)
 	}
 
-	if healthAddress != "" {
-		go healthServe(healthAddress, ctx)
+	if serverAddress != "" {
+		go Server(ctx, serverAddress)
 	}
 
 	<-ctx.Done()
 }
 
-func healthServe(address string, ctx context.Context) {
+func Server(ctx context.Context, address string) {
+	promHandler := promhttp.Handler()
 	svc := &http.Server{
 		BaseContext: func(_ net.Listener) context.Context {
 			return ctx
 		},
 		Addr: address,
 		Handler: http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/health" {
+			switch r.URL.Path {
+			case "/healthz", "/health":
+				rw.Write([]byte("health"))
+			case "/metrics":
+				promHandler.ServeHTTP(rw, r)
+			default:
 				http.NotFound(rw, r)
-				return
 			}
-			rw.Write([]byte("health"))
 		}),
 	}
 
 	err := svc.ListenAndServe()
 	if err != nil {
-		logger.Fatal("Fatal start health server")
+		logger.Fatal("Fatal start server")
 	}
 }
 
