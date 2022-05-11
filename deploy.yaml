@@ -254,6 +254,10 @@ spec:
               value: fake-
             - name: GENERATE_REPLICAS
               value: "5"
+            - name: TAKE_OVER_LABELS_SELECTOR
+              value: type=fake-kubelet
+            - name: TAKE_OVER_ALL
+              value: "false"
             - name: CIDR
               value: 10.0.0.1/24
             - name: HEALTH_ADDRESS # deprecated: use SERVER_ADDRESS instead

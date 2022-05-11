@@ -26,6 +26,7 @@ var (
 	nodeIP                     = net.ParseIP(getEnv("NODE_IP", "196.168.0.1"))
 	nodeName                   = getEnv("NODE_NAME", "fake")
 	takeOverAll                = getEnvBool("TAKE_OVER_ALL", false)
+	takeOverLabelsSelector     = getEnv("TAKE_OVER_LABELS_SELECTOR", "type=fake-kubelet")
 	generateNodeName           = getEnv("GENERATE_NODE_NAME", "")
 	generateReplicas           = getEnv("GENERATE_REPLICAS", "0")
 	kubeconfig                 = getEnv("KUBECONFIG", "")
@@ -45,6 +46,7 @@ func init() {
 	pflag.IPVar(&nodeIP, "node_ip", nodeIP, "node ip")
 	pflag.StringVarP(&nodeName, "node_name", "n", nodeName, "node name")
 	pflag.BoolVar(&takeOverAll, "take_over_all", takeOverAll, "take over all node")
+	pflag.StringVar(&takeOverLabelsSelector, "take_over_labels_selector", takeOverLabelsSelector, "take over labels selector")
 	pflag.StringVar(&kubeconfig, "kubeconfig", kubeconfig, "kubeconfig")
 	pflag.StringVar(&master, "master", master, "master")
 	pflag.StringVar(&serverAddress, "server_address", serverAddress, "server address")
@@ -92,6 +94,7 @@ func main() {
 		ClientSet:                  clientset,
 		Nodes:                      nodes,
 		TakeOverAll:                takeOverAll,
+		TakeOverLabelsSelector:     takeOverLabelsSelector,
 		CIDR:                       cidr,
 		NodeIP:                     nodeIP.String(),
 		Logger:                     logger,
