@@ -8,6 +8,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/yaml"
 )
@@ -49,6 +50,7 @@ type Config struct {
 	ClientSet                  kubernetes.Interface
 	Nodes                      []string
 	TakeOverAll                bool
+	TakeOverLabelsSelector     string
 	CIDR                       string
 	NodeIP                     string
 	Logger                     Logger
@@ -64,11 +66,18 @@ type Logger interface {
 
 // NewController creates a new fake kubelet controller
 func NewController(conf Config) (*Controller, error) {
-
 	var nodeSelectorFunc func(node *corev1.Node) bool
 	if conf.TakeOverAll {
 		nodeSelectorFunc = func(node *corev1.Node) bool {
 			return true
+		}
+	} else if conf.TakeOverLabelsSelector != "" {
+		selector, err := labels.Parse(conf.TakeOverLabelsSelector)
+		if err != nil {
+			return nil, err
+		}
+		nodeSelectorFunc = func(node *corev1.Node) bool {
+			return selector.Matches(labels.Set(node.Labels))
 		}
 	}
 
