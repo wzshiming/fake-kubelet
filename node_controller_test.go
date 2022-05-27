@@ -106,7 +106,9 @@ func TestNodeController(t *testing.T) {
 	node3.Name = "node3"
 	node3.Status.Allocatable[corev1.ResourceCPU] = resource.MustParse("8")
 	_, err = clientset.CoreV1().Nodes().Create(ctx, node3, metav1.CreateOptions{})
-
+	if err != nil {
+		t.Fatal(fmt.Errorf("failed to create node3: %w", err))
+	}
 	time.Sleep(2 * time.Second)
 	list, err = clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
