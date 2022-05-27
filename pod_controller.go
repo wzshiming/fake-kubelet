@@ -301,11 +301,26 @@ func (c *PodController) configurePod(pod *corev1.Pod) ([]byte, error) {
 		c.ipPool.Use(pod.Status.PodIP)
 	}
 
-	merge := c.podStatusTemplate
+	temp := c.podStatusTemplate
 	if m, ok := pod.Annotations[mergeLabel]; ok && strings.TrimSpace(m) != "" {
-		merge = m
+		temp = m
 	}
-	patch, err := toTemplateJson(merge, pod, c.funcMap)
+
+	patch, err := configurePod(pod, temp, c.funcMap)
+	if err != nil {
+		return nil, err
+	}
+	if patch == nil {
+		return nil, nil
+	}
+
+	return json.Marshal(map[string]json.RawMessage{
+		"status": patch,
+	})
+}
+
+func configurePod(pod *corev1.Pod, temp string, funcMap template.FuncMap) ([]byte, error) {
+	patch, err := toTemplateJson(temp, pod, funcMap)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +353,5 @@ func (c *PodController) configurePod(pod *corev1.Pod) ([]byte, error) {
 		}
 	}
 
-	return json.Marshal(map[string]json.RawMessage{
-		"status": patch,
-	})
+	return patch, nil
 }
