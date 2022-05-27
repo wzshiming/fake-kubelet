@@ -291,7 +291,6 @@ func (c *NodeController) LockNodes(ctx context.Context, nodes <-chan string) {
 		})
 	}
 	tasks.Wait()
-	return
 }
 
 // LockNode locks a given node
