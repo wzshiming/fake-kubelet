@@ -256,6 +256,14 @@ func (c *PodController) WatchPods(ctx context.Context, lockChan, deleteChan chan
 								c.logger.Printf("Skip pod %s.%s on %s: not take over", pod.Name, pod.Namespace, pod.Spec.NodeName)
 							}
 						}
+					} else {
+						if c.nodeHasFunc(pod.Spec.NodeName) {
+							lockChan <- pod.DeepCopy()
+						} else {
+							if c.logger != nil {
+								c.logger.Printf("Skip pod %s.%s on %s: not take over", pod.Name, pod.Namespace, pod.Spec.NodeName)
+							}
+						}
 					}
 				case watch.Deleted:
 					// Pod is deleted, do nothing
@@ -321,6 +329,11 @@ func (c *PodController) configurePod(pod *corev1.Pod) ([]byte, error) {
 
 func configurePod(pod *corev1.Pod, temp string, funcMap template.FuncMap) ([]byte, error) {
 	patch, err := toTemplateJson(temp, pod, funcMap)
+	if err != nil {
+		return nil, err
+	}
+
+	patch, err = modifyStatusByAnnotations(patch, pod.Annotations)
 	if err != nil {
 		return nil, err
 	}

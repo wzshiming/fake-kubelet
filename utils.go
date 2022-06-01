@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template"
 	"time"
 
+	jsonpatch "gopkg.in/evanphx/json-patch.v5"
 	"sigs.k8s.io/yaml"
 )
 
@@ -236,4 +238,34 @@ func (s *stringSets) Foreach(f func(string)) {
 	for k := range s.sets {
 		f(k)
 	}
+}
+
+// modifyStatusByAnnotations modifies the status by the annotations.
+func modifyStatusByAnnotations(origin []byte, anno map[string]string) ([]byte, error) {
+	const prefix = "fake/status."
+	var patch jsonpatch.Patch
+	for name, value := range anno {
+		if strings.HasPrefix(name, prefix) {
+			p := name[len(prefix):]
+			if p == "" {
+				continue
+			}
+			op := json.RawMessage(`"add"`)
+			n := json.RawMessage(strconv.Quote("/" + strings.ReplaceAll(p, ".", "/")))
+			v := json.RawMessage(value)
+			if !json.Valid(v) {
+				// Treat it as a string if it is not a valid JSON encoding
+				v = json.RawMessage(strconv.Quote(value))
+			}
+			patch = append(patch, jsonpatch.Operation{
+				"op":    &op,
+				"path":  &n,
+				"value": &v,
+			})
+		}
+	}
+	if len(patch) != 0 {
+		return patch.Apply(origin)
+	}
+	return origin, nil
 }
