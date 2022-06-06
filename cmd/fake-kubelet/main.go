@@ -44,14 +44,14 @@ var (
 
 func init() {
 	compatibleFlags()
-	pflag.StringVar(&cidr, "cidr", cidr, "cidr")
-	pflag.IPVar(&nodeIP, "node-ip", nodeIP, "node ip")
-	pflag.StringVarP(&nodeName, "node-name", "n", nodeName, "node name")
-	pflag.BoolVar(&takeOverAll, "take-over-all", takeOverAll, "take over all node")
-	pflag.StringVar(&takeOverLabelsSelector, "take-over-labels-selector", takeOverLabelsSelector, "take over labels selector")
-	pflag.StringVar(&kubeconfig, "kubeconfig", kubeconfig, "kubeconfig")
-	pflag.StringVar(&master, "master", master, "master")
-	pflag.StringVar(&serverAddress, "server-address", serverAddress, "server address")
+	pflag.StringVar(&cidr, "cidr", cidr, "CIDR of the pod ip")
+	pflag.IPVar(&nodeIP, "node-ip", nodeIP, "IP of the node")
+	pflag.StringVarP(&nodeName, "node-name", "n", nodeName, "Names of the node")
+	pflag.BoolVar(&takeOverAll, "take-over-all", takeOverAll, "Take over all nodes, there should be no nodes maintained by real Kubelet in the cluster")
+	pflag.StringVar(&takeOverLabelsSelector, "take-over-labels-selector", takeOverLabelsSelector, "Selector of nodes to take over")
+	pflag.StringVar(&kubeconfig, "kubeconfig", kubeconfig, "Path to the kubeconfig file to use")
+	pflag.StringVar(&master, "master", master, "Server is the address of the kubernetes cluster ")
+	pflag.StringVar(&serverAddress, "server-address", serverAddress, "Address to expose health and metrics on")
 	pflag.Parse()
 }
 
