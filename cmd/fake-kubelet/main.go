@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -42,15 +43,31 @@ var (
 )
 
 func init() {
+	compatibleFlags()
 	pflag.StringVar(&cidr, "cidr", cidr, "cidr")
-	pflag.IPVar(&nodeIP, "node_ip", nodeIP, "node ip")
-	pflag.StringVarP(&nodeName, "node_name", "n", nodeName, "node name")
-	pflag.BoolVar(&takeOverAll, "take_over_all", takeOverAll, "take over all node")
-	pflag.StringVar(&takeOverLabelsSelector, "take_over_labels_selector", takeOverLabelsSelector, "take over labels selector")
+	pflag.IPVar(&nodeIP, "node-ip", nodeIP, "node ip")
+	pflag.StringVarP(&nodeName, "node-name", "n", nodeName, "node name")
+	pflag.BoolVar(&takeOverAll, "take-over-all", takeOverAll, "take over all node")
+	pflag.StringVar(&takeOverLabelsSelector, "take-over-labels-selector", takeOverLabelsSelector, "take over labels selector")
 	pflag.StringVar(&kubeconfig, "kubeconfig", kubeconfig, "kubeconfig")
 	pflag.StringVar(&master, "master", master, "master")
-	pflag.StringVar(&serverAddress, "server_address", serverAddress, "server address")
+	pflag.StringVar(&serverAddress, "server-address", serverAddress, "server address")
 	pflag.Parse()
+}
+
+// compatibleFlags is used to convert deprecated flags to new flags.
+func compatibleFlags() {
+	args := make([]string, 0, len(os.Args))
+	args = append(args, os.Args[0])
+	for _, arg := range os.Args[1:] {
+		if strings.HasPrefix(arg, "--") && strings.Contains(arg, "_") {
+			newArg := strings.ReplaceAll(arg, "_", "-")
+			fmt.Fprintf(os.Stderr, "WARNING: flag %q is deprecated, please use %q instead\n", arg, newArg)
+			arg = newArg
+		}
+		args = append(args, arg)
+	}
+	os.Args = args
 }
 
 func main() {
