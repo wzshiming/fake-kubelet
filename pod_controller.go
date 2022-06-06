@@ -310,7 +310,7 @@ func (c *PodController) configurePod(pod *corev1.Pod) ([]byte, error) {
 	}
 
 	temp := c.podStatusTemplate
-	if m, ok := pod.Annotations[mergeLabel]; ok && strings.TrimSpace(m) != "" {
+	if m, ok := pod.Annotations[overwriteTemplateAnnotations]; ok && strings.TrimSpace(m) != "" {
 		temp = m
 	}
 

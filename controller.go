@@ -14,8 +14,7 @@ import (
 )
 
 var (
-	mergeLabel = "fake/status"
-	startTime  = time.Now().Format(time.RFC3339)
+	startTime = time.Now().Format(time.RFC3339)
 
 	funcMap = template.FuncMap{
 		"Now": func() string {

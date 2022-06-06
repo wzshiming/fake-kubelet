@@ -240,9 +240,11 @@ func (s *stringSets) Foreach(f func(string)) {
 	}
 }
 
+const overwriteTemplateAnnotations = "fake/status"
+
 // modifyStatusByAnnotations modifies the status by the annotations.
 func modifyStatusByAnnotations(origin []byte, anno map[string]string) ([]byte, error) {
-	const prefix = "fake/status."
+	const prefix = overwriteTemplateAnnotations + "."
 	var patch jsonpatch.Patch
 	for name, value := range anno {
 		if strings.HasPrefix(name, prefix) {
