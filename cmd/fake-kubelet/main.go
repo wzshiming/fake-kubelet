@@ -50,7 +50,7 @@ func init() {
 	pflag.BoolVar(&takeOverAll, "take-over-all", takeOverAll, "Take over all nodes, there should be no nodes maintained by real Kubelet in the cluster")
 	pflag.StringVar(&takeOverLabelsSelector, "take-over-labels-selector", takeOverLabelsSelector, "Selector of nodes to take over")
 	pflag.StringVar(&kubeconfig, "kubeconfig", kubeconfig, "Path to the kubeconfig file to use")
-	pflag.StringVar(&master, "master", master, "Server is the address of the kubernetes cluster ")
+	pflag.StringVar(&master, "master", master, "Server is the address of the kubernetes cluster")
 	pflag.StringVar(&serverAddress, "server-address", serverAddress, "Address to expose health and metrics on")
 	pflag.Parse()
 }
@@ -104,7 +104,8 @@ func main() {
 	if takeOverAll {
 		logger.Printf("Watch all nodes")
 	} else {
-		logger.Printf("Watch fake node %q", nodeName)
+		logger.Printf("Watch nodes %q", strings.Join(nodes, ","))
+		logger.Printf("Watch nodes with labels %q", takeOverLabelsSelector)
 	}
 
 	n, err := fake_kubelet.NewController(fake_kubelet.Config{
