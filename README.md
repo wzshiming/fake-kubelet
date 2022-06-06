@@ -100,6 +100,17 @@ fake-pod-78884479b7-rzbs2   1/1     Running   0          6s    10.0.0.17   fake-
 fake-pod-78884479b7-scsjb   1/1     Running   0          6s    10.0.0.25   fake-1   <none>           <none>
 ```
 
+Modify a container of pod as unready and you will see the pod is 0/1 of ready.
+
+```
+> kubectl annotate pod fake-pod-78884479b7-52qcx --overwrite fake/status.containerStatuses.0.ready=false
+pod/fake-pod-78884479b7-52qcx annotated
+
+> kubectl get pod fake-pod-78884479b7-52qcx -o wide
+NAME                        READY   STATUS    RESTARTS   AGE   IP          NODE     NOMINATED NODE   READINESS GATES
+fake-pod-78884479b7-52qcx   0/1     Running   0          6s    10.0.0.23   fake-4   <none>           <none>
+```
+
 ## License
 
 Licensed under the MIT License. See [LICENSE](https://github.com/wzshiming/fake-kubelet/blob/master/LICENSE) for the full license text.
