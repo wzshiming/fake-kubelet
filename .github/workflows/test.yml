@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_FAKE_KUBELET: fake-kubelet:test
+  FAKE_KUBELET_IMAGE: fake-kubelet:test
 
 jobs:
   test:
@@ -21,7 +21,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.17
+          go-version: 1.18
       - name: go mod vendor
         run: |
           go mod vendor
@@ -29,25 +29,47 @@ jobs:
         run: |
           go test -v ./...
 
-  build:
+  build-fake-k8s:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          repository: wzshiming/fake-k8s
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.18
+      - name: Build fake-k8s
+        run: |
+          go build -o fake-k8s ./cmd/fake-k8s
+      - name: Upload fake-k8s
+        uses: actions/upload-artifact@v2
+        with:
+          name: binary
+          path: fake-k8s
+
+  build-fake-kubelet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: wzshiming/fake-kubelet
       - name: Build image
         run: |
-          docker build -t "${IMAGE_FAKE_KUBELET}" .
-          docker save "${IMAGE_FAKE_KUBELET}" -o image.tar
+          docker build -t "${FAKE_KUBELET_IMAGE}" .
+          docker save "${FAKE_KUBELET_IMAGE}" -o image.tar
       - name: Upload image tar
         uses: actions/upload-artifact@v2
         with:
-          name: test
+          name: image
           path: image.tar
 
   e2e-test:
     runs-on: ubuntu-latest
     needs:
-      - build
       - test
+      - build-fake-k8s
+      - build-fake-kubelet
     steps:
       - uses: actions/checkout@v2
         with:
@@ -55,18 +77,25 @@ jobs:
       - name: Download for image tar
         uses: actions/download-artifact@v2
         with:
-          name: test
+          name: image
       - name: Load image tar
         run: |
           docker load -i image.tar
+      - name: Download for binary
+        uses: actions/download-artifact@v2
+        with:
+          name: binary
       - name: Run test
-        run: ./fake-k8s.test.sh
+        run: |
+          chmod +x fake-k8s
+          ./fake-k8s.test.sh
 
   e2e-mock-test:
     runs-on: ubuntu-latest
     needs:
-      - build
       - test
+      - build-fake-k8s
+      - build-fake-kubelet
     steps:
       - uses: actions/checkout@v2
         with:
@@ -74,18 +103,25 @@ jobs:
       - name: Download for image tar
         uses: actions/download-artifact@v2
         with:
-          name: test
+          name: image
       - name: Load image tar
         run: |
           docker load -i image.tar
-      - name: Run mock test
-        run: ./fake-k8s.mock.test.sh
+      - name: Download for binary
+        uses: actions/download-artifact@v2
+        with:
+          name: binary
+      - name: Run test
+        run: |
+          chmod +x fake-k8s
+          ./fake-k8s.mock.test.sh
 
   e2e-benchmark-test:
     runs-on: ubuntu-latest
     needs:
-      - build
       - test
+      - build-fake-k8s
+      - build-fake-kubelet
     steps:
       - uses: actions/checkout@v2
         with:
@@ -93,9 +129,15 @@ jobs:
       - name: Download for image tar
         uses: actions/download-artifact@v2
         with:
-          name: test
+          name: image
       - name: Load image tar
         run: |
           docker load -i image.tar
+      - name: Download for binary
+        uses: actions/download-artifact@v2
+        with:
+          name: binary
       - name: Run benchmark test
-        run: ./fake-k8s.benchmark.test.sh
+        run: |
+          chmod +x fake-k8s
+          ./fake-k8s.benchmark.test.sh
