@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -23,21 +24,25 @@ import (
 )
 
 var (
-	cidr                       = getEnv("CIDR", "10.0.0.1/24")
-	nodeIP                     = net.ParseIP(getEnv("NODE_IP", "196.168.0.1"))
-	nodeName                   = getEnv("NODE_NAME", "fake")
-	takeOverAll                = getEnvBool("TAKE_OVER_ALL", false)
-	takeOverLabelsSelector     = getEnv("TAKE_OVER_LABELS_SELECTOR", "type=fake-kubelet")
-	generateNodeName           = getEnv("GENERATE_NODE_NAME", "")
-	generateReplicas           = getEnv("GENERATE_REPLICAS", "0")
-	kubeconfig                 = getEnv("KUBECONFIG", "")
-	healthAddress              = getEnv("HEALTH_ADDRESS", "") // deprecated: use serverAddress instead
-	serverAddress              = getEnv("SERVER_ADDRESS", healthAddress)
-	podStatusTemplate          = getEnv("POD_STATUS_TEMPLATE", templates.DefaultPodStatusTemplate)
-	nodeTemplate               = getEnv("NODE_TEMPLATE", templates.DefaultNodeTemplate)
-	nodeHeartbeatTemplate      = getEnv("NODE_HEARTBEAT_TEMPLATE", templates.DefaultNodeHeartbeatTemplate)
-	nodeInitializationTemplate = getEnv("NODE_INITIALIZATION_TEMPLATE", templates.DefaultNodeInitializationTemplate)
-	master                     = ""
+	cidr                           = getEnv("CIDR", "10.0.0.1/24")
+	nodeIP                         = net.ParseIP(getEnv("NODE_IP", "196.168.0.1"))
+	nodeName                       = getEnv("NODE_NAME", "fake")
+	takeOverAll                    = getEnvBool("TAKE_OVER_ALL", false)
+	takeOverLabelsSelector         = getEnv("TAKE_OVER_LABELS_SELECTOR", "type=fake-kubelet")
+	generateNodeName               = getEnv("GENERATE_NODE_NAME", "")
+	generateReplicas               = getEnv("GENERATE_REPLICAS", "0")
+	kubeconfig                     = getEnv("KUBECONFIG", "")
+	healthAddress                  = getEnv("HEALTH_ADDRESS", "") // deprecated: use serverAddress instead
+	serverAddress                  = getEnv("SERVER_ADDRESS", healthAddress)
+	podStatusTemplatePath          = ""
+	podStatusTemplate              = getEnv("POD_STATUS_TEMPLATE", templates.DefaultPodStatusTemplate)
+	nodeTemplatePath               = ""
+	nodeTemplate                   = getEnv("NODE_TEMPLATE", templates.DefaultNodeTemplate)
+	nodeHeartbeatTemplateePath     = ""
+	nodeHeartbeatTemplate          = getEnv("NODE_HEARTBEAT_TEMPLATE", templates.DefaultNodeHeartbeatTemplate)
+	nodeInitializationTemplatePath = ""
+	nodeInitializationTemplate     = getEnv("NODE_INITIALIZATION_TEMPLATE", templates.DefaultNodeInitializationTemplate)
+	master                         = ""
 
 	logger = log.New(os.Stderr, "[fake-kubelet] ", log.LstdFlags)
 )
@@ -49,10 +54,32 @@ func init() {
 	pflag.StringVarP(&nodeName, "node-name", "n", nodeName, "Names of the node")
 	pflag.BoolVar(&takeOverAll, "take-over-all", takeOverAll, "Take over all nodes, there should be no nodes maintained by real Kubelet in the cluster")
 	pflag.StringVar(&takeOverLabelsSelector, "take-over-labels-selector", takeOverLabelsSelector, "Selector of nodes to take over")
+	pflag.StringVar(&generateNodeName, "generate-node-name", generateNodeName, "Generate node name")
+	pflag.StringVar(&generateReplicas, "generate-replicas", generateReplicas, "Generate replicas")
 	pflag.StringVar(&kubeconfig, "kubeconfig", kubeconfig, "Path to the kubeconfig file to use")
 	pflag.StringVar(&master, "master", master, "Server is the address of the kubernetes cluster")
 	pflag.StringVar(&serverAddress, "server-address", serverAddress, "Address to expose health and metrics on")
+	pflag.StringVar(&podStatusTemplatePath, "pod-status-template-file", podStatusTemplatePath, "Template for pod status file")
+	pflag.StringVar(&nodeTemplatePath, "node-template-file", nodeTemplatePath, "Template for node status file")
+	pflag.StringVar(&nodeHeartbeatTemplateePath, "node-heartbeat-template-file", nodeHeartbeatTemplateePath, "Template for node heartbeat status file")
+	pflag.StringVar(&nodeInitializationTemplatePath, "node-initialization-template-file", nodeInitializationTemplatePath, "Template for node initialization status file")
+
 	pflag.Parse()
+
+}
+
+func readFile(path string, defaultConetnt string) (string, error) {
+	if path == "" {
+		return defaultConetnt, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return defaultConetnt, nil
+	}
+	return string(data), nil
 }
 
 // compatibleFlags is used to convert deprecated flags to new flags.
@@ -75,12 +102,31 @@ func main() {
 	ctx, cancel := context.WithCancel(ctx)
 	notify.OnceSlice([]os.Signal{syscall.SIGINT, syscall.SIGTERM}, cancel)
 
+	var err error
 	if kubeconfig != "" {
 		f, err := os.Stat(kubeconfig)
 		if err != nil || f.IsDir() {
 			kubeconfig = ""
 		}
 	}
+
+	podStatusTemplate, err = readFile(podStatusTemplatePath, podStatusTemplate)
+	if err != nil {
+		logger.Fatalf("Failed to read pod status template: %v", err)
+	}
+	nodeTemplate, err = readFile(nodeTemplatePath, nodeTemplate)
+	if err != nil {
+		logger.Fatalf("Failed to read node status template: %v", err)
+	}
+	nodeHeartbeatTemplate, err = readFile(nodeHeartbeatTemplateePath, nodeHeartbeatTemplate)
+	if err != nil {
+		logger.Fatalf("Failed to read node heartbeat template: %v", err)
+	}
+	nodeInitializationTemplate, err = readFile(nodeInitializationTemplatePath, nodeInitializationTemplate)
+	if err != nil {
+		logger.Fatalf("Failed to read node initialization template: %v", err)
+	}
+
 	clientset, err := newClientset(master, kubeconfig)
 	if err != nil {
 		logger.Fatalln(err)
