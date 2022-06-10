@@ -171,13 +171,13 @@ func main() {
 		logger.Fatalln(err)
 	}
 
+	if serverAddress != "" {
+		go Server(ctx, serverAddress)
+	}
+
 	err = n.Start(ctx)
 	if err != nil {
 		logger.Fatalln(err)
-	}
-
-	if serverAddress != "" {
-		go Server(ctx, serverAddress)
 	}
 
 	<-ctx.Done()
