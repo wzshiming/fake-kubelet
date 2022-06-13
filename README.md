@@ -1,8 +1,7 @@
 # fake-kubelet
 
-[![Build Status](https://travis-ci.org/wzshiming/fake-kubelet.svg?branch=master)](https://travis-ci.org/wzshiming/fake-kubelet)
+[![Build](https://github.com/wzshiming/fake-kubelet/actions/workflows/go-cross-build.yml/badge.svg)](https://github.com/wzshiming/fake-kubelet/actions/workflows/go-cross-build.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/wzshiming/fake-kubelet)](https://goreportcard.com/report/github.com/wzshiming/fake-kubelet)
-[![Docker Automated build](https://img.shields.io/docker/cloud/automated/wzshiming/fake-kubelet.svg)](https://hub.docker.com/r/wzshiming/fake-kubelet)
 [![GitHub license](https://img.shields.io/github/license/wzshiming/fake-kubelet.svg)](https://github.com/wzshiming/fake-kubelet/blob/master/LICENSE)
 
 This is a fake kubelet. The pod on this node will always be in the ready state, but no process will be started.
