@@ -22,6 +22,7 @@ type NodeController struct {
 	clientSet                kubernetes.Interface
 	nodeIP                   string
 	nodeSelectorFunc         func(node *corev1.Node) bool
+	nodeLabelSelector        string
 	lockPodsOnNodeFunc       func(nodeName string) error
 	nodesSets                *stringSets
 	nodeTemplate             string
@@ -39,6 +40,7 @@ type NodeController struct {
 type NodeControllerConfig struct {
 	ClientSet                  kubernetes.Interface
 	NodeSelectorFunc           func(node *corev1.Node) bool
+	NodeLabelSelector          string
 	LockPodsOnNodeFunc         func(nodeName string) error
 	NodeIP                     string
 	NodeTemplate               string
@@ -56,6 +58,7 @@ func NewNodeController(conf NodeControllerConfig) (*NodeController, error) {
 	n := &NodeController{
 		clientSet:                conf.ClientSet,
 		nodeSelectorFunc:         conf.NodeSelectorFunc,
+		nodeLabelSelector:        conf.NodeLabelSelector,
 		lockPodsOnNodeFunc:       conf.LockPodsOnNodeFunc,
 		nodeIP:                   conf.NodeIP,
 		nodesSets:                newStringSets(),
@@ -89,7 +92,9 @@ func (c *NodeController) Start(ctx context.Context) error {
 	go c.LockNodes(ctx, c.nodeChan)
 
 	if c.nodeSelectorFunc != nil {
-		opt := metav1.ListOptions{}
+		opt := metav1.ListOptions{
+			LabelSelector: c.nodeLabelSelector,
+		}
 		err := c.WatchNodes(ctx, c.nodeChan, opt)
 		if err != nil {
 			return fmt.Errorf("failed watch node: %w", err)
@@ -373,4 +378,8 @@ func (c *NodeController) configureHeartbeatNode(node *corev1.Node) ([]byte, erro
 
 func (c *NodeController) Has(nodeName string) bool {
 	return c.nodesSets.Has(nodeName)
+}
+
+func (c *NodeController) Size() int {
+	return c.nodesSets.Size()
 }

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/labels"
+
 	"github.com/wzshiming/fake-kubelet/templates"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -19,6 +21,9 @@ func TestNodeController(t *testing.T) {
 		&corev1.Node{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "node0",
+				Labels: map[string]string{
+					"fake": "true",
+				},
 			},
 			Status: corev1.NodeStatus{
 				Addresses: []corev1.NodeAddress{
@@ -39,11 +44,26 @@ func TestNodeController(t *testing.T) {
 		},
 		&corev1.Node{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: "xxx",
+				Name: "node-not-match",
+			},
+			Status: corev1.NodeStatus{},
+		},
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "other-node",
+				Labels: map[string]string{
+					"fake": "true",
+				},
 			},
 			Status: corev1.NodeStatus{},
 		},
 	)
+
+	defaultNodes := map[string]bool{
+		"node1": true,
+		"node2": true,
+	}
+	labelsSelector, _ := labels.Parse("fake=true")
 	nodeSelectorFunc := func(node *corev1.Node) bool {
 		return strings.HasPrefix(node.Name, "node")
 	}
@@ -51,6 +71,7 @@ func TestNodeController(t *testing.T) {
 		ClientSet:                  clientset,
 		NodeIP:                     "10.0.0.1",
 		NodeSelectorFunc:           nodeSelectorFunc,
+		NodeLabelSelector:          labelsSelector.String(),
 		NodeTemplate:               templates.DefaultNodeTemplate,
 		NodeInitializationTemplate: templates.DefaultNodeInitializationTemplate,
 		NodeHeartbeatTemplate:      templates.DefaultNodeHeartbeatTemplate,
@@ -75,17 +96,15 @@ func TestNodeController(t *testing.T) {
 		t.Fatal(fmt.Errorf("failed to start nodes controller: %w", err))
 	}
 
-	nodes.CreateNode(ctx, "node1")
-	nodes.CreateNode(ctx, "node2")
-
-	time.Sleep(2 * time.Second)
-	list, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		t.Fatal(fmt.Errorf("failed to list nodes: %w", err))
+	for node := range defaultNodes {
+		nodes.CreateNode(ctx, node)
 	}
 
-	if len(list.Items) != 4 {
-		t.Fatal(fmt.Errorf("want 4 nodes, got %d", len(list.Items)))
+	time.Sleep(2 * time.Second)
+
+	nodeSize := nodes.Size()
+	if nodeSize != 3 {
+		t.Fatal(fmt.Errorf("want 3 nodes, got %d", nodeSize))
 	}
 
 	node0, err := clientset.CoreV1().Nodes().Get(ctx, "node0", metav1.GetOptions{})
@@ -112,13 +131,10 @@ func TestNodeController(t *testing.T) {
 		t.Fatal(fmt.Errorf("failed to create node3: %w", err))
 	}
 	time.Sleep(2 * time.Second)
-	list, err = clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		t.Fatal(fmt.Errorf("failed to list nodes: %w", err))
-	}
 
-	if len(list.Items) != 5 {
-		t.Fatal(fmt.Errorf("want 5 nodes, got %d", len(list.Items)))
+	nodeSize = nodes.Size()
+	if nodeSize != 4 {
+		t.Fatal(fmt.Errorf("want 4 nodes, got %d", nodeSize))
 	}
 
 	node3, err = clientset.CoreV1().Nodes().Get(ctx, "node3", metav1.GetOptions{})
@@ -129,8 +145,13 @@ func TestNodeController(t *testing.T) {
 		t.Fatal(fmt.Errorf("node3 want 8 cpu, got %v", node3.Status.Allocatable[corev1.ResourceCPU]))
 	}
 
+	list, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(fmt.Errorf("failed to list nodes: %w", err))
+	}
 	for _, node := range list.Items {
-		if nodeSelectorFunc(&node) {
+		if defaultNodes[node.Name] ||
+			(nodeSelectorFunc(&node) && labelsSelector.Matches(labels.Set(node.Labels))) {
 			if node.Status.Phase != corev1.NodeRunning {
 				t.Fatal(fmt.Errorf("want node %s to be running, got %s", node.Name, node.Status.Phase))
 			}

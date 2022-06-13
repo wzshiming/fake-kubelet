@@ -65,6 +65,7 @@ type Logger interface {
 // NewController creates a new fake kubelet controller
 func NewController(conf Config) (*Controller, error) {
 	var nodeSelectorFunc func(node *corev1.Node) bool
+	var nodeLabelSelector string
 	if conf.TakeOverAll {
 		nodeSelectorFunc = func(node *corev1.Node) bool {
 			return true
@@ -77,14 +78,16 @@ func NewController(conf Config) (*Controller, error) {
 		nodeSelectorFunc = func(node *corev1.Node) bool {
 			return selector.Matches(labels.Set(node.Labels))
 		}
+		nodeLabelSelector = selector.String()
 	}
 
 	var lockPodsOnNodeFunc func(ctx context.Context, nodeName string) error
 
 	nodes, err := NewNodeController(NodeControllerConfig{
-		ClientSet:        conf.ClientSet,
-		NodeIP:           conf.NodeIP,
-		NodeSelectorFunc: nodeSelectorFunc,
+		ClientSet:         conf.ClientSet,
+		NodeIP:            conf.NodeIP,
+		NodeSelectorFunc:  nodeSelectorFunc,
+		NodeLabelSelector: nodeLabelSelector,
 		LockPodsOnNodeFunc: func(nodeName string) error {
 			return lockPodsOnNodeFunc(context.Background(), nodeName)
 		},
