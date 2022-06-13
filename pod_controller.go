@@ -133,9 +133,6 @@ func (c *PodController) DeletePod(ctx context.Context, pod *corev1.Pod) error {
 		}
 		return err
 	}
-	if c.cidrIPNet.Contains(net.ParseIP(pod.Status.PodIP)) {
-		c.ipPool.Put(pod.Status.PodIP)
-	}
 	return nil
 }
 
@@ -266,7 +263,13 @@ func (c *PodController) WatchPods(ctx context.Context, lockChan, deleteChan chan
 						}
 					}
 				case watch.Deleted:
-					// Pod is deleted, do nothing
+					pod := event.Object.(*corev1.Pod)
+					if c.nodeHasFunc(pod.Spec.NodeName) {
+						// Recycling PodIP
+						if pod.Status.PodIP != "" && c.cidrIPNet.Contains(net.ParseIP(pod.Status.PodIP)) {
+							c.ipPool.Put(pod.Status.PodIP)
+						}
+					}
 				}
 			case <-ctx.Done():
 				watcher.Stop()
