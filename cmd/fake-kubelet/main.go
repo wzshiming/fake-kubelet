@@ -132,31 +132,14 @@ func main() {
 		logger.Fatalln(err)
 	}
 
-	var nodes []string
-	for _, n := range strings.SplitN(nodeName, ",", -1) {
-		if n != "" {
-			nodes = append(nodes, n)
-		}
-	}
-	if generateNodeName != "" {
-		u, err := strconv.ParseUint(generateReplicas, 10, 64)
-		if err == nil {
-			for i := 0; i != int(u); i++ {
-				nodes = append(nodes, generateNodeName+strconv.Itoa(i))
-			}
-		}
-	}
-
 	if takeOverAll {
 		logger.Printf("Watch all nodes")
-	} else {
-		logger.Printf("Watch nodes %q", strings.Join(nodes, ","))
+	} else if takeOverLabelsSelector != "" {
 		logger.Printf("Watch nodes with labels %q", takeOverLabelsSelector)
 	}
 
-	n, err := fake_kubelet.NewController(fake_kubelet.Config{
+	controller, err := fake_kubelet.NewController(fake_kubelet.Config{
 		ClientSet:                  clientset,
-		Nodes:                      nodes,
 		TakeOverAll:                takeOverAll,
 		TakeOverLabelsSelector:     takeOverLabelsSelector,
 		CIDR:                       cidr,
@@ -175,9 +158,31 @@ func main() {
 		go Server(ctx, serverAddress)
 	}
 
-	err = n.Start(ctx)
+	err = controller.Start(ctx)
 	if err != nil {
 		logger.Fatalln(err)
+	}
+
+	for _, n := range strings.SplitN(nodeName, ",", -1) {
+		if n != "" {
+			err = controller.CreateNode(ctx, n)
+			if err != nil {
+				logger.Printf("Failed create node %q: %v", n, err)
+			}
+		}
+	}
+	if generateNodeName != "" {
+		u, err := strconv.ParseUint(generateReplicas, 10, 64)
+		if err != nil {
+			logger.Printf("Failed parse uint %q: %v", generateReplicas, err)
+		}
+		for i := 0; i != int(u); i++ {
+			n := generateNodeName + strconv.Itoa(i)
+			err = controller.CreateNode(ctx, n)
+			if err != nil {
+				logger.Printf("Failed create node %q: %v", n, err)
+			}
+		}
 	}
 
 	<-ctx.Done()
