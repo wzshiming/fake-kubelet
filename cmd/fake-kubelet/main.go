@@ -68,16 +68,16 @@ func init() {
 
 }
 
-func readFile(path string, defaultConetnt string) (string, error) {
+func readFile(path string, defaultContent string) (string, error) {
 	if path == "" {
-		return defaultConetnt, nil
+		return defaultContent, nil
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
 	if len(bytes.TrimSpace(data)) == 0 {
-		return defaultConetnt, nil
+		return defaultContent, nil
 	}
 	return string(data), nil
 }
