@@ -23,7 +23,6 @@ type NodeController struct {
 	nodeIP                   string
 	nodeSelectorFunc         func(node *corev1.Node) bool
 	lockPodsOnNodeFunc       func(nodeName string) error
-	nodes                    []string
 	nodesSets                *stringSets
 	nodeTemplate             string
 	nodeHeartbeatTemplate    string
@@ -42,7 +41,6 @@ type NodeControllerConfig struct {
 	NodeSelectorFunc           func(node *corev1.Node) bool
 	LockPodsOnNodeFunc         func(nodeName string) error
 	NodeIP                     string
-	Nodes                      []string
 	NodeTemplate               string
 	NodeInitializationTemplate string
 	NodeHeartbeatTemplate      string
@@ -57,7 +55,6 @@ type NodeControllerConfig struct {
 func NewNodeController(conf NodeControllerConfig) (*NodeController, error) {
 	n := &NodeController{
 		clientSet:                conf.ClientSet,
-		nodes:                    conf.Nodes,
 		nodeSelectorFunc:         conf.NodeSelectorFunc,
 		lockPodsOnNodeFunc:       conf.LockPodsOnNodeFunc,
 		nodeIP:                   conf.NodeIP,
@@ -91,13 +88,6 @@ func (c *NodeController) Start(ctx context.Context) error {
 
 	go c.LockNodes(ctx, c.nodeChan)
 
-	for _, node := range c.nodes {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		c.nodeChan <- node
-	}
-
 	if c.nodeSelectorFunc != nil {
 		opt := metav1.ListOptions{}
 		err := c.WatchNodes(ctx, c.nodeChan, opt)
@@ -113,10 +103,18 @@ func (c *NodeController) Start(ctx context.Context) error {
 				}
 			}
 		}()
-	} else {
-		close(c.nodeChan)
 	}
 	return nil
+}
+
+// CreateNode create a node use node template
+func (c *NodeController) CreateNode(ctx context.Context, nodeName string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case c.nodeChan <- nodeName:
+		return nil
+	}
 }
 
 func (c *NodeController) heartbeatNode(ctx context.Context, nodeName string) error {

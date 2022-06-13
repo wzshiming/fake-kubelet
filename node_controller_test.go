@@ -51,7 +51,6 @@ func TestNodeController(t *testing.T) {
 		ClientSet:                  clientset,
 		NodeIP:                     "10.0.0.1",
 		NodeSelectorFunc:           nodeSelectorFunc,
-		Nodes:                      []string{"node1", "node2"},
 		NodeTemplate:               templates.DefaultNodeTemplate,
 		NodeInitializationTemplate: templates.DefaultNodeInitializationTemplate,
 		NodeHeartbeatTemplate:      templates.DefaultNodeHeartbeatTemplate,
@@ -75,6 +74,9 @@ func TestNodeController(t *testing.T) {
 	if err != nil {
 		t.Fatal(fmt.Errorf("failed to start nodes controller: %w", err))
 	}
+
+	nodes.CreateNode(ctx, "node1")
+	nodes.CreateNode(ctx, "node2")
 
 	time.Sleep(2 * time.Second)
 	list, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})

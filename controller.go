@@ -47,7 +47,6 @@ type Controller struct {
 
 type Config struct {
 	ClientSet                  kubernetes.Interface
-	Nodes                      []string
 	TakeOverAll                bool
 	TakeOverLabelsSelector     string
 	CIDR                       string
@@ -89,7 +88,6 @@ func NewController(conf Config) (*Controller, error) {
 		LockPodsOnNodeFunc: func(nodeName string) error {
 			return lockPodsOnNodeFunc(context.Background(), nodeName)
 		},
-		Nodes:                      conf.Nodes,
 		NodeTemplate:               conf.NodeTemplate,
 		NodeInitializationTemplate: conf.NodeInitializationTemplate,
 		NodeHeartbeatTemplate:      conf.NodeHeartbeatTemplate,
@@ -138,4 +136,8 @@ func (c *Controller) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start nodes controller: %v", err)
 	}
 	return nil
+}
+
+func (c *Controller) CreateNode(ctx context.Context, nodeName string) error {
+	return c.nodes.CreateNode(ctx, nodeName)
 }
