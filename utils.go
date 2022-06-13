@@ -277,3 +277,12 @@ func modifyStatusByAnnotations(origin []byte, anno map[string]string) ([]byte, e
 	}
 	return origin, nil
 }
+
+func GenerateSerialNumber(n int, minLen int, fun func(string)) {
+	if n <= 0 {
+		return
+	}
+	for i := 0; i != n; i++ {
+		fun(fmt.Sprintf("%0*d", minLen, i))
+	}
+}

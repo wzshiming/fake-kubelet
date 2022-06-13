@@ -30,7 +30,8 @@ var (
 	takeOverAll                    = getEnvBool("TAKE_OVER_ALL", false)
 	takeOverLabelsSelector         = getEnv("TAKE_OVER_LABELS_SELECTOR", "type=fake-kubelet")
 	generateNodeName               = getEnv("GENERATE_NODE_NAME", "")
-	generateReplicas               = getEnv("GENERATE_REPLICAS", "0")
+	generateReplicas               = getEnvUint("GENERATE_REPLICAS", 0)
+	generateSerialLength           = getEnvUint("GENERATE_SERIAL_LENGTH", 1)
 	kubeconfig                     = getEnv("KUBECONFIG", "")
 	healthAddress                  = getEnv("HEALTH_ADDRESS", "") // deprecated: use serverAddress instead
 	serverAddress                  = getEnv("SERVER_ADDRESS", healthAddress)
@@ -55,7 +56,8 @@ func init() {
 	pflag.BoolVar(&takeOverAll, "take-over-all", takeOverAll, "Take over all nodes, there should be no nodes maintained by real Kubelet in the cluster")
 	pflag.StringVar(&takeOverLabelsSelector, "take-over-labels-selector", takeOverLabelsSelector, "Selector of nodes to take over")
 	pflag.StringVar(&generateNodeName, "generate-node-name", generateNodeName, "Generate node name")
-	pflag.StringVar(&generateReplicas, "generate-replicas", generateReplicas, "Generate replicas")
+	pflag.UintVar(&generateReplicas, "generate-replicas", generateReplicas, "Generate replicas")
+	pflag.UintVar(&generateSerialLength, "generate-serial-length", generateSerialLength, "Generate serial length")
 	pflag.StringVar(&kubeconfig, "kubeconfig", kubeconfig, "Path to the kubeconfig file to use")
 	pflag.StringVar(&master, "master", master, "Server is the address of the kubernetes cluster")
 	pflag.StringVar(&serverAddress, "server-address", serverAddress, "Address to expose health and metrics on")
@@ -172,17 +174,13 @@ func main() {
 		}
 	}
 	if generateNodeName != "" {
-		u, err := strconv.ParseUint(generateReplicas, 10, 64)
-		if err != nil {
-			logger.Printf("Failed parse uint %q: %v", generateReplicas, err)
-		}
-		for i := 0; i != int(u); i++ {
-			n := generateNodeName + strconv.Itoa(i)
-			err = controller.CreateNode(ctx, n)
+		fake_kubelet.GenerateSerialNumber(int(generateReplicas), int(generateSerialLength), func(s string) {
+			name := generateNodeName + s
+			err = controller.CreateNode(ctx, generateNodeName+s)
 			if err != nil {
-				logger.Printf("Failed create node %q: %v", n, err)
+				logger.Printf("Failed create node %q: %v", name, err)
 			}
-		}
+		})
 	}
 
 	<-ctx.Done()
@@ -244,6 +242,17 @@ func getEnvBool(name string, defaults bool) bool {
 		boolean, err := strconv.ParseBool(val)
 		if err == nil {
 			return boolean
+		}
+	}
+	return defaults
+}
+
+func getEnvUint(name string, defaults uint) uint {
+	val, ok := os.LookupEnv(name)
+	if ok {
+		num, err := strconv.ParseUint(val, 10, 64)
+		if err == nil {
+			return uint(num)
 		}
 	}
 	return defaults
