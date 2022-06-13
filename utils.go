@@ -213,6 +213,12 @@ func newStringSets() *stringSets {
 	}
 }
 
+func (s *stringSets) Size() int {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+	return len(s.sets)
+}
+
 func (s *stringSets) Put(key string) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
