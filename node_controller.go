@@ -229,7 +229,7 @@ func (c *NodeController) WatchNodes(ctx context.Context, ch chan<- string, opt m
 					// node is modified, do nothing
 				case watch.Deleted:
 					node := event.Object.(*corev1.Node)
-					if c.nodesSets.Has(node.Name) && c.nodeSelectorFunc(node) {
+					if c.nodesSets.Has(node.Name) {
 						c.nodesSets.Delete(node.Name)
 					}
 				}
