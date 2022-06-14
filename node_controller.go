@@ -114,6 +114,9 @@ func (c *NodeController) Start(ctx context.Context) error {
 
 // CreateNode create a node use node template
 func (c *NodeController) CreateNode(ctx context.Context, nodeName string) error {
+	if c.nodesSets.Has(nodeName) {
+		return nil
+	}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

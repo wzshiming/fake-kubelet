@@ -128,8 +128,9 @@ func TestGenerateSerialNumber(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := []string{}
-			GenerateSerialNumber(tt.args.n, tt.args.minLen, func(s string) {
+			GenerateSerialNumber(tt.args.n, tt.args.minLen, func(s string) bool {
 				got = append(got, s)
+				return true
 			})
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("GenerateSerialNumber() got = %q, want %q", got, tt.want)
