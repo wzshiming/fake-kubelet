@@ -91,7 +91,7 @@ func NewPodController(conf PodControllerConfig) (*PodController, error) {
 }
 
 // Start starts the fake pod controller
-// It will modify the node status to we want
+// It will modify the pods status to we want
 func (c *PodController) Start(ctx context.Context) error {
 	go c.LockPods(ctx, c.lockPodChan)
 	go c.DeletePods(ctx, c.deletePodChan)
@@ -114,7 +114,7 @@ func (c *PodController) Start(ctx context.Context) error {
 	return nil
 }
 
-// DeletePod deletes a pod and recycling the PodIP
+// DeletePod deletes a pod
 func (c *PodController) DeletePod(ctx context.Context, pod *corev1.Pod) error {
 	if len(pod.Finalizers) != 0 {
 		_, err := c.clientSet.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType, removeFinalizers, metav1.PatchOptions{})
