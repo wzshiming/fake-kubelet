@@ -11,12 +11,15 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
 	fake_kubelet "github.com/wzshiming/fake-kubelet"
 	"github.com/wzshiming/fake-kubelet/templates"
 	"github.com/wzshiming/notify"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -138,6 +141,29 @@ func main() {
 		logger.Printf("Watch all nodes")
 	} else if takeOverLabelsSelector != "" {
 		logger.Printf("Watch nodes with labels %q", takeOverLabelsSelector)
+	}
+
+	backoff := wait.Backoff{
+		Duration: 1 * time.Second,
+		Factor:   2,
+		Jitter:   0.1,
+		Steps:    5,
+	}
+	err = wait.ExponentialBackoffWithContext(ctx, backoff,
+		func() (bool, error) {
+			_, err := clientset.CoreV1().Nodes().List(ctx,
+				metav1.ListOptions{
+					Limit: 1,
+				})
+			if err != nil {
+				logger.Printf("Failed to list nodes: %v", err)
+				return false, nil
+			}
+			return true, nil
+		},
+	)
+	if err != nil {
+		logger.Fatalf("Failed to list nodes: %v", err)
 	}
 
 	controller, err := fake_kubelet.NewController(fake_kubelet.Config{
