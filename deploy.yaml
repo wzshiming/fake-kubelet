@@ -252,6 +252,8 @@ spec:
               value: "" # This is to specify a single Node, use GENERATE_NODE_NAME and GENERATE_REPLICAS to generate multiple nodes
             - name: GENERATE_NODE_NAME
               value: fake-
+            - name: GENERATE_SERIAL_LENGTH
+              value: "1"
             - name: GENERATE_REPLICAS
               value: "5"
             - name: TAKE_OVER_LABELS_SELECTOR
