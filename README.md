@@ -114,7 +114,7 @@ fake-pod-78884479b7-52qcx   0/1     Running   0          6s    10.0.0.23   fake-
 ```
 
 Create a custom node, that content can be fully customized.
-but node's status cannot be modified with Kubectl after creation and needs to be re-created.
+using Kubectl to modify node status must be preceded by `--subresource=status`.
 
 ``` console
 > kubectl apply -f - <<EOF
