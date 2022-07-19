@@ -46,16 +46,17 @@ type Controller struct {
 }
 
 type Config struct {
-	ClientSet                  kubernetes.Interface
-	TakeOverAll                bool
-	TakeOverLabelsSelector     string
-	CIDR                       string
-	NodeIP                     string
-	Logger                     Logger
-	PodStatusTemplate          string
-	NodeTemplate               string
-	NodeInitializationTemplate string
-	NodeHeartbeatTemplate      string
+	ClientSet                         kubernetes.Interface
+	TakeOverAll                       bool
+	TakeOverLabelsSelector            string
+	PodCustomStatusAnnotationSelector string
+	CIDR                              string
+	NodeIP                            string
+	Logger                            Logger
+	PodStatusTemplate                 string
+	NodeTemplate                      string
+	NodeInitializationTemplate        string
+	NodeHeartbeatTemplate             string
 }
 
 type Logger interface {
@@ -105,15 +106,16 @@ func NewController(conf Config) (*Controller, error) {
 	}
 
 	pods, err := NewPodController(PodControllerConfig{
-		ClientSet:            conf.ClientSet,
-		NodeIP:               conf.NodeIP,
-		CIDR:                 conf.CIDR,
-		PodStatusTemplate:    conf.PodStatusTemplate,
-		LockPodParallelism:   16,
-		DeletePodParallelism: 16,
-		NodeHasFunc:          nodes.Has, // just handle pods that are on nodes we have
-		Logger:               conf.Logger,
-		FuncMap:              funcMap,
+		ClientSet:                         conf.ClientSet,
+		NodeIP:                            conf.NodeIP,
+		CIDR:                              conf.CIDR,
+		PodCustomStatusAnnotationSelector: conf.PodCustomStatusAnnotationSelector,
+		PodStatusTemplate:                 conf.PodStatusTemplate,
+		LockPodParallelism:                16,
+		DeletePodParallelism:              16,
+		NodeHasFunc:                       nodes.Has, // just handle pods that are on nodes we have
+		Logger:                            conf.Logger,
+		FuncMap:                           funcMap,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pods controller: %v", err)

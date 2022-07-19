@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
@@ -30,31 +31,33 @@ var (
 
 // PodController is a fake pods implementation that can be used to test
 type PodController struct {
-	clientSet            kubernetes.Interface
-	nodeIP               string
-	cidrIPNet            *net.IPNet
-	nodeHasFunc          func(nodeName string) bool
-	ipPool               *ipPool
-	podStatusTemplate    string
-	logger               Logger
-	funcMap              template.FuncMap
-	lockPodChan          chan *corev1.Pod
-	lockPodParallelism   int
-	deletePodChan        chan *corev1.Pod
-	deletePodParallelism int
+	clientSet                         kubernetes.Interface
+	podCustomStatusAnnotationSelector labels.Selector
+	nodeIP                            string
+	cidrIPNet                         *net.IPNet
+	nodeHasFunc                       func(nodeName string) bool
+	ipPool                            *ipPool
+	podStatusTemplate                 string
+	logger                            Logger
+	funcMap                           template.FuncMap
+	lockPodChan                       chan *corev1.Pod
+	lockPodParallelism                int
+	deletePodChan                     chan *corev1.Pod
+	deletePodParallelism              int
 }
 
 // PodControllerConfig is the configuration for the PodController
 type PodControllerConfig struct {
-	ClientSet            kubernetes.Interface
-	NodeIP               string
-	CIDR                 string
-	NodeHasFunc          func(nodeName string) bool
-	PodStatusTemplate    string
-	Logger               Logger
-	LockPodParallelism   int
-	DeletePodParallelism int
-	FuncMap              template.FuncMap
+	ClientSet                         kubernetes.Interface
+	PodCustomStatusAnnotationSelector string
+	NodeIP                            string
+	CIDR                              string
+	NodeHasFunc                       func(nodeName string) bool
+	PodStatusTemplate                 string
+	Logger                            Logger
+	LockPodParallelism                int
+	DeletePodParallelism              int
+	FuncMap                           template.FuncMap
 }
 
 // NewPodController creates a new fake pods controller
@@ -63,18 +66,25 @@ func NewPodController(conf PodControllerConfig) (*PodController, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	podCustomStatusAnnotationSelector, err := labels.Parse(conf.PodCustomStatusAnnotationSelector)
+	if err != nil {
+		return nil, err
+	}
+
 	n := &PodController{
-		clientSet:            conf.ClientSet,
-		nodeIP:               conf.NodeIP,
-		cidrIPNet:            cidrIPNet,
-		ipPool:               newIPPool(cidrIPNet),
-		nodeHasFunc:          conf.NodeHasFunc,
-		logger:               conf.Logger,
-		podStatusTemplate:    conf.PodStatusTemplate,
-		lockPodChan:          make(chan *corev1.Pod),
-		lockPodParallelism:   conf.LockPodParallelism,
-		deletePodChan:        make(chan *corev1.Pod),
-		deletePodParallelism: conf.DeletePodParallelism,
+		clientSet:                         conf.ClientSet,
+		podCustomStatusAnnotationSelector: podCustomStatusAnnotationSelector,
+		nodeIP:                            conf.NodeIP,
+		cidrIPNet:                         cidrIPNet,
+		ipPool:                            newIPPool(cidrIPNet),
+		nodeHasFunc:                       conf.NodeHasFunc,
+		logger:                            conf.Logger,
+		podStatusTemplate:                 conf.PodStatusTemplate,
+		lockPodChan:                       make(chan *corev1.Pod),
+		lockPodParallelism:                conf.LockPodParallelism,
+		deletePodChan:                     make(chan *corev1.Pod),
+		deletePodParallelism:              conf.DeletePodParallelism,
 	}
 	n.funcMap = template.FuncMap{
 		"NodeIP": func() string {
@@ -159,6 +169,11 @@ func (c *PodController) DeletePods(ctx context.Context, pods <-chan *corev1.Pod)
 
 // LockPod locks a given pod
 func (c *PodController) LockPod(ctx context.Context, pod *corev1.Pod) error {
+	if c.podCustomStatusAnnotationSelector != nil &&
+		len(pod.Annotations) != 0 &&
+		c.podCustomStatusAnnotationSelector.Matches(labels.Set(pod.Annotations)) {
+		return nil
+	}
 	patch, err := c.configurePod(pod)
 	if err != nil {
 		return err
