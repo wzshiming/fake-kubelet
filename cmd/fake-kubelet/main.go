@@ -27,26 +27,27 @@ import (
 )
 
 var (
-	cidr                           = getEnv("CIDR", "10.0.0.1/24")
-	nodeIP                         = net.ParseIP(getEnv("NODE_IP", "196.168.0.1"))
-	nodeName                       = getEnv("NODE_NAME", "fake")
-	takeOverAll                    = getEnvBool("TAKE_OVER_ALL", false)
-	takeOverLabelsSelector         = getEnv("TAKE_OVER_LABELS_SELECTOR", "type=fake-kubelet")
-	generateNodeName               = getEnv("GENERATE_NODE_NAME", "")
-	generateReplicas               = getEnvUint("GENERATE_REPLICAS", 0)
-	generateSerialLength           = getEnvUint("GENERATE_SERIAL_LENGTH", 1)
-	kubeconfig                     = getEnv("KUBECONFIG", "")
-	healthAddress                  = getEnv("HEALTH_ADDRESS", "") // deprecated: use serverAddress instead
-	serverAddress                  = getEnv("SERVER_ADDRESS", healthAddress)
-	podStatusTemplatePath          = ""
-	podStatusTemplate              = getEnv("POD_STATUS_TEMPLATE", templates.DefaultPodStatusTemplate)
-	nodeTemplatePath               = ""
-	nodeTemplate                   = getEnv("NODE_TEMPLATE", templates.DefaultNodeTemplate)
-	nodeHeartbeatTemplateePath     = ""
-	nodeHeartbeatTemplate          = getEnv("NODE_HEARTBEAT_TEMPLATE", templates.DefaultNodeHeartbeatTemplate)
-	nodeInitializationTemplatePath = ""
-	nodeInitializationTemplate     = getEnv("NODE_INITIALIZATION_TEMPLATE", templates.DefaultNodeInitializationTemplate)
-	master                         = ""
+	cidr                              = getEnv("CIDR", "10.0.0.1/24")
+	nodeIP                            = net.ParseIP(getEnv("NODE_IP", "196.168.0.1"))
+	nodeName                          = getEnv("NODE_NAME", "fake")
+	takeOverAll                       = getEnvBool("TAKE_OVER_ALL", false)
+	takeOverLabelsSelector            = getEnv("TAKE_OVER_LABELS_SELECTOR", "type=fake-kubelet")
+	podCustomStatusAnnotationSelector = getEnv("POD_CUSTOM_STATUS_ANNOTATION_SELECTOR", "fake=custom")
+	generateNodeName                  = getEnv("GENERATE_NODE_NAME", "")
+	generateReplicas                  = getEnvUint("GENERATE_REPLICAS", 0)
+	generateSerialLength              = getEnvUint("GENERATE_SERIAL_LENGTH", 1)
+	kubeconfig                        = getEnv("KUBECONFIG", "")
+	healthAddress                     = getEnv("HEALTH_ADDRESS", "") // deprecated: use serverAddress instead
+	serverAddress                     = getEnv("SERVER_ADDRESS", healthAddress)
+	podStatusTemplatePath             = ""
+	podStatusTemplate                 = getEnv("POD_STATUS_TEMPLATE", templates.DefaultPodStatusTemplate)
+	nodeTemplatePath                  = ""
+	nodeTemplate                      = getEnv("NODE_TEMPLATE", templates.DefaultNodeTemplate)
+	nodeHeartbeatTemplateePath        = ""
+	nodeHeartbeatTemplate             = getEnv("NODE_HEARTBEAT_TEMPLATE", templates.DefaultNodeHeartbeatTemplate)
+	nodeInitializationTemplatePath    = ""
+	nodeInitializationTemplate        = getEnv("NODE_INITIALIZATION_TEMPLATE", templates.DefaultNodeInitializationTemplate)
+	master                            = ""
 
 	logger = log.New(os.Stderr, "[fake-kubelet] ", log.LstdFlags)
 )
@@ -58,6 +59,7 @@ func init() {
 	pflag.StringVarP(&nodeName, "node-name", "n", nodeName, "Names of the node")
 	pflag.BoolVar(&takeOverAll, "take-over-all", takeOverAll, "Take over all nodes, there should be no nodes maintained by real Kubelet in the cluster")
 	pflag.StringVar(&takeOverLabelsSelector, "take-over-labels-selector", takeOverLabelsSelector, "Selector of nodes to take over")
+	pflag.StringVar(&podCustomStatusAnnotationSelector, "pod-custom-status-annotation-selector", podCustomStatusAnnotationSelector, "Selector of pods that with this annotation will no longer maintain status and will be left to others to modify it")
 	pflag.StringVar(&generateNodeName, "generate-node-name", generateNodeName, "Generate node name")
 	pflag.UintVar(&generateReplicas, "generate-replicas", generateReplicas, "Generate replicas")
 	pflag.UintVar(&generateSerialLength, "generate-serial-length", generateSerialLength, "Generate serial length")
@@ -167,16 +169,17 @@ func main() {
 	}
 
 	controller, err := fake_kubelet.NewController(fake_kubelet.Config{
-		ClientSet:                  clientset,
-		TakeOverAll:                takeOverAll,
-		TakeOverLabelsSelector:     takeOverLabelsSelector,
-		CIDR:                       cidr,
-		NodeIP:                     nodeIP.String(),
-		Logger:                     logger,
-		PodStatusTemplate:          podStatusTemplate,
-		NodeTemplate:               nodeTemplate,
-		NodeHeartbeatTemplate:      nodeHeartbeatTemplate,
-		NodeInitializationTemplate: nodeInitializationTemplate,
+		ClientSet:                         clientset,
+		TakeOverAll:                       takeOverAll,
+		TakeOverLabelsSelector:            takeOverLabelsSelector,
+		PodCustomStatusAnnotationSelector: podCustomStatusAnnotationSelector,
+		CIDR:                              cidr,
+		NodeIP:                            nodeIP.String(),
+		Logger:                            logger,
+		PodStatusTemplate:                 podStatusTemplate,
+		NodeTemplate:                      nodeTemplate,
+		NodeHeartbeatTemplate:             nodeHeartbeatTemplate,
+		NodeInitializationTemplate:        nodeInitializationTemplate,
 	})
 	if err != nil {
 		logger.Fatalln(err)

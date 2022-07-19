@@ -10,6 +10,7 @@ import (
 	"github.com/wzshiming/fake-kubelet/templates"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -52,16 +53,18 @@ func TestPodController(t *testing.T) {
 	nodeHasFunc := func(nodeName string) bool {
 		return strings.HasPrefix(nodeName, "node")
 	}
+	annotationSelector, _ := labels.Parse("fake=custom")
 	pods, err := NewPodController(PodControllerConfig{
-		ClientSet:            clientset,
-		NodeIP:               "10.0.0.1",
-		CIDR:                 "10.0.0.1/24",
-		PodStatusTemplate:    templates.DefaultPodStatusTemplate,
-		NodeHasFunc:          nodeHasFunc,
-		FuncMap:              funcMap,
-		LockPodParallelism:   2,
-		DeletePodParallelism: 2,
-		Logger:               testingLogger{t},
+		ClientSet:                         clientset,
+		NodeIP:                            "10.0.0.1",
+		CIDR:                              "10.0.0.1/24",
+		PodCustomStatusAnnotationSelector: annotationSelector.String(),
+		PodStatusTemplate:                 templates.DefaultPodStatusTemplate,
+		NodeHasFunc:                       nodeHasFunc,
+		FuncMap:                           funcMap,
+		LockPodParallelism:                2,
+		DeletePodParallelism:              2,
+		Logger:                            testingLogger{t},
 	})
 	if err != nil {
 		t.Fatal(fmt.Errorf("new pods controller error: %v", err))
@@ -95,6 +98,24 @@ func TestPodController(t *testing.T) {
 			NodeName: "node0",
 		},
 	}, metav1.CreateOptions{})
+
+	pod1, err := clientset.CoreV1().Pods("default").Get(ctx, "pod1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(fmt.Errorf("get pod1 error: %v", err))
+	}
+	pod1.Annotations = map[string]string{
+		"fake": "custom",
+	}
+	pod1.Status.Reason = "custom"
+	clientset.CoreV1().Pods("default").Update(ctx, pod1, metav1.UpdateOptions{})
+
+	pod1, err = clientset.CoreV1().Pods("default").Get(ctx, "pod1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(fmt.Errorf("get pod1 error: %v", err))
+	}
+	if pod1.Status.Reason != "custom" {
+		t.Fatal(fmt.Errorf("pod1 status reason not custom"))
+	}
 
 	time.Sleep(2 * time.Second)
 
