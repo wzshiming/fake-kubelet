@@ -102,11 +102,15 @@ fake-pod-78884479b7-rzbs2   1/1     Running   0          6s    10.0.0.17   fake-
 fake-pod-78884479b7-scsjb   1/1     Running   0          6s    10.0.0.25   fake-1   <none>           <none>
 ```
 
-Modify a container of pod as unready and you will see the pod is `0/1` of ready.
+By adding the specified Annotation, the status of Pods can be modified independently.
+
+Modify a container of pod as unready, and you will see the pod is `0/1` of ready.
 
 ``` console
-> kubectl annotate pod fake-pod-78884479b7-52qcx --overwrite fake/status.containerStatuses.0.ready=false
+> kubectl annotate pod fake-pod-78884479b7-52qcx --overwrite fake=custom
 pod/fake-pod-78884479b7-52qcx annotated
+
+> kubectl edit pod fake-pod-78884479b7-52qcx --subresource=status
 
 > kubectl get pod fake-pod-78884479b7-52qcx -o wide
 NAME                        READY   STATUS    RESTARTS   AGE   IP          NODE     NOMINATED NODE   READINESS GATES
@@ -168,11 +172,11 @@ EOF
 ``` console
 > kubectl get node -o wide
 NAME         STATUS   ROLES   AGE   VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE    KERNEL-VERSION   CONTAINER-RUNTIME
-fake-0       Ready    agent   10s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
-fake-1       Ready    agent   10s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
-fake-2       Ready    agent   10s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
-fake-3       Ready    agent   10s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
-fake-4       Ready    agent   10s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
+fake-0       Ready    agent   12s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
+fake-1       Ready    agent   12s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
+fake-2       Ready    agent   12s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
+fake-3       Ready    agent   12s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
+fake-4       Ready    agent   12s   fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
 fake-arm-0   Ready    agent   2s    fake      10.88.0.136   <none>        <unknown>   <unknown>        <unknown>
 ```
 
