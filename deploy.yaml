@@ -245,7 +245,7 @@ spec:
     spec:
       containers:
         - name: fake-kubelet
-          image: ghcr.io/wzshiming/fake-kubelet/fake-kubelet:v0.7.4
+          image: ghcr.io/wzshiming/fake-kubelet/fake-kubelet:v0.8.0
           imagePullPolicy: IfNotPresent
           env:
             - name: NODE_NAME
@@ -258,6 +258,8 @@ spec:
               value: "5"
             - name: TAKE_OVER_LABELS_SELECTOR
               value: type=fake-kubelet
+            - name: POD_CUSTOM_STATUS_ANNOTATION_SELECTOR
+              value: fake=custom
             - name: TAKE_OVER_ALL
               value: "false"
             - name: CIDR
